@@ -1,34 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { City3D } from './City3D'
+import { City3D, type CameraMode } from './City3D'
 import { createDemoRun } from './demoFixture'
 import { DemoTransport, ReplayTransport } from './transport'
 import type { BlockPayload, EventPayload, RunSummary, ScenePayload, Transport, TransportStatus } from './types'
 
-const screens = ['Grid overview', 'Energy impact', 'Agent theatre', 'DISCOM ledger', 'Household']
-const agents = ['prosumer', 'consumer', 'market', 'sentinel', 'flow', 'market', 'settlement']
-const phases = ['Gathering offers', 'Gathering bids', 'Clearing market', 'Constraint check', 'Reshaping flow', 'Re-clearing', 'Settling block']
 const money = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
 const title = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
-
-type IconName = 'shield' | 'cloud' | 'pause' | 'play' | 'grid' | 'chart' | 'agents' | 'ledger' | 'home' | 'bolt' | 'arrow' | 'pin'
-function Icon({ name }: { name: IconName }) {
-  const paths = {
-    shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />,
-    cloud: <path d="M17.5 19H7a5 5 0 1 1 1.7-9.7A7 7 0 0 1 22 12.5 6.5 6.5 0 0 1 17.5 19Z" />,
-    pause: <path d="M8 5v14M16 5v14" />,
-    play: <path d="m8 5 11 7-11 7Z" />,
-    grid: <><rect x="3" y="3" width="7" height="7" rx="2" /><rect x="14" y="3" width="7" height="7" rx="2" /><rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" /></>,
-    chart: <><path d="M4 3v17h17M8 15l4-5 4 2 5-7" /></>,
-    agents: <><circle cx="12" cy="5" r="3" /><circle cx="5" cy="18" r="3" /><circle cx="19" cy="18" r="3" /><path d="m10 8-4 7m8-7 4 7M8 18h8" /></>,
-    ledger: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
-    home: <><path d="m3 10 9-7 9 7v10H3ZM9 20v-7h6v7" /></>,
-    bolt: <path d="m13 2-9 12h7l-1 8 10-13h-7Z" />,
-    arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
-    pin: <><path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z" /><circle cx="12" cy="10" r="2" /></>,
-  }
-  return <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
-}
 
 function useGridTransport() {
   const liveRun = useMemo(createDemoRun, [])
@@ -36,7 +14,7 @@ function useGridTransport() {
   const disconnectRef = useRef<(() => void) | null>(null)
   const [scene, setScene] = useState<ScenePayload | null>(null)
   const [block, setBlock] = useState<BlockPayload | null>(null)
-  const [status, setStatus] = useState<TransportStatus>('stale')
+  const [status, setStatus] = useState<TransportStatus>('live')
   const [events, setEvents] = useState<EventPayload[]>([])
   const pendingCommands = useRef<Array<{ name: string; issuedAt: number; baselineExporters: number }>>([])
 
@@ -48,137 +26,739 @@ function useGridTransport() {
       transport.onScene(setScene),
       transport.onBlock((next) => {
         if (!next || !['cleared', 'reshaped', 'fallback'].includes(next.status)) {
-          setEvents((current) => [...current, { block: current.at(-1)?.block ?? -1, agent: 'transport', kind: 'malformed_payload', text: 'Malformed block dropped; holding last known state' }].slice(-40))
+          setEvents((current) => [
+            ...current,
+            {
+              block: current.at(-1)?.block ?? -1,
+              agent: 'transport',
+              kind: 'malformed_payload',
+              text: 'Malformed block dropped; holding last known state',
+            },
+          ].slice(-50))
           return
         }
         pendingCommands.current = pendingCommands.current.filter((pending) => {
           const exporters = Object.values(next.houses).filter((house) => house.state === 'export').length
-          const visible = pending.name === 'derate'
-            ? next.status === 'reshaped' || Object.values(next.transformers).some((transformer) => transformer.stressed)
-            : exporters < pending.baselineExporters
+          const visible =
+            pending.name === 'derate'
+              ? next.status === 'reshaped' || Object.values(next.transformers).some((t) => t.stressed)
+              : exporters < pending.baselineExporters
           if (visible) return false
           if (next.block >= pending.issuedAt + 2) {
-            setEvents((current) => [...current, { block: next.block, agent: 'transport', kind: 'command_no_feedback', text: `${title(pending.name)} produced no visible change within two blocks` }].slice(-40))
+            setEvents((current) => [
+              ...current,
+              {
+                block: next.block,
+                agent: 'transport',
+                kind: 'command_no_feedback',
+                text: `${title(pending.name)} produced no visible change within two blocks`,
+              },
+            ].slice(-50))
             return false
           }
           return true
         })
         setBlock(next)
       }),
-      transport.onEvent((event) => setEvents((current) => [...current, event].slice(-40))),
+      transport.onEvent((event) => setEvents((current) => [...current, event].slice(-50))),
       transport.onStatus(setStatus),
     ]
     transport.start()
-    disconnectRef.current = () => { offs.forEach((off) => off()); transport.stop() }
+    disconnectRef.current = () => {
+      offs.forEach((off) => off())
+      transport.stop()
+    }
     return () => disconnectRef.current?.()
   }, [])
 
   useEffect(() => connect(new DemoTransport(liveRun)), [connect, liveRun])
+
   const command = useCallback((name: string) => {
-    pendingCommands.current.push({ name, issuedAt: block?.block ?? 0, baselineExporters: Object.values(block?.houses ?? {}).filter((house) => house.state === 'export').length })
-    transportRef.current?.command(name, name === 'derate' ? { transformer_id: 'DT-3', factor: 0.6 } : { cover: 0.8, blocks: 8 })
+    pendingCommands.current.push({
+      name,
+      issuedAt: block?.block ?? 0,
+      baselineExporters: Object.values(block?.houses ?? {}).filter((house) => house.state === 'export').length,
+    })
+    transportRef.current?.command(
+      name,
+      name === 'derate' ? { transformer_id: 'DT-3', factor: 0.6 } : { cover: 0.8, blocks: 8 }
+    )
   }, [block])
-  const replay = useCallback(() => { setEvents([]); connect(new ReplayTransport(createDemoRun())) }, [connect])
+
+  const replay = useCallback(() => {
+    setEvents([])
+    connect(new ReplayTransport(createDemoRun()))
+  }, [connect])
+
   return { scene, block, status, events, command, replay, summary: liveRun.summary }
 }
 
-function Shell({ active, onNavigate, status, replay, children }: { active: number; onNavigate: (value: number) => void; status: TransportStatus; replay: () => void; children: React.ReactNode }) {
-  const navIcons: IconName[] = ['grid', 'chart', 'agents', 'ledger', 'home']
-  return <div className={`app-shell ${status === 'stale' || status === 'disconnected' ? 'transport-alert' : ''}`}>
-    <header className="topbar">
-      <button className="brand" onClick={() => onNavigate(0)} aria-label="Open city screen"><span className="brand-mark"><Icon name="bolt" /></span><span><strong>UrjaSetu<span className="brand-dot">.</span></strong><small>Power belongs here.</small></span></button>
-      <div className="workspace-label">Your workspace</div>
-      <nav aria-label="Main screens">{screens.map((screen, index) => <button key={screen} className={`nav-item ${active === index ? 'active' : ''}`} onClick={() => onNavigate(index)} aria-label={screen} title={screen} aria-current={active === index ? 'page' : undefined}><Icon name={navIcons[index]} /><span>{screen}</span><kbd>{index + 1}</kbd></button>)}</nav>
-      <div className="sidebar-story"><div className="solar-symbol"><Icon name="bolt" /></div><strong>A little more local.<br />A lot more resilient.</strong><p>Neighbors powering neighbors, one trade at a time.</p><span>Decentralized by design</span></div>
-      <div className="workspace-location"><Icon name="pin" /><span><strong>Whitefield microgrid</strong><small>Bengaluru, India</small></span></div>
-    </header>
-    <div className="workspace-top"><div><span>Workspace</span><span className="breadcrumb-slash">/</span><strong>{screens[active]}</strong></div><div className="workspace-actions"><div className={`transport-status status-${status}`}><span />{status === 'live' ? 'Demo simulation' : status === 'replay' ? 'Replay run' : title(status)}</div><button className="replay-button" onClick={replay}><Icon name="play" />Replay</button><span className="operator-avatar" title="Grid operator">OP</span></div></div>
-    {status === 'disconnected' && <div className="disconnect-note">Live link lost. Press <kbd>R</kbd> to switch to protected replay.</div>}
-    <main>{children}</main>
-    <footer className="key-rail"><span>Screen <kbd>1–5</kbd></span><span>Derate <kbd>D</kbd></span><span>Cloud bank <kbd>C</kbd></span><span>Replay <kbd>R</kbd></span><span className="key-rail-note">Demo data · 3D network model</span></footer>
-  </div>
-}
+// Circular SVG Progress Gauge
+function CircularGauge({
+  label,
+  value,
+  color = '#00f0ff',
+  sublabel,
+}: {
+  label: string
+  value: number
+  color?: string
+  sublabel?: string
+}) {
+  const radius = 34
+  const circumference = 2 * Math.PI * radius
+  const strokeDashoffset = circumference - (Math.min(100, Math.max(0, value)) / 100) * circumference
 
-function CityScreen({ scene, block, status, events, command }: { scene: ScenePayload | null; block: BlockPayload | null; status: TransportStatus; events: EventPayload[]; command: (name: string) => void }) {
-  const [selected, setSelected] = useState<string | null>(null)
-  const traceRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { if (traceRef.current) traceRef.current.scrollTop = traceRef.current.scrollHeight }, [events])
-  if (!scene) return <div className="waiting-state"><h1>Reading the network topology</h1><p>The city will remain available if the transport pauses.</p></div>
-  const worst = block ? Object.entries(block.transformers).sort((a, b) => b[1].loading - a[1].loading)[0] : null
-  const selectedHouse = selected ? scene.houses.find((house) => house.id === selected) : null
-  const selectedReading = selected ? block?.houses[selected] : null
-  const hidden = Math.max(0, (block?.trades.length ?? 0) - 12)
-  const exporters = Object.values(block?.houses ?? {}).filter((house) => house.state === 'export').length
-  const traded = block?.trades.reduce((total, trade) => total + trade.kwh, 0) ?? 0
-  return <section className={`city-screen ${block?.status === 'reshaped' ? 'is-reshaped' : ''}`}>
-    <header className="overview-heading"><div><h1>Your neighborhood. <span>Connected.</span></h1><p>Hyper-local energy. Autonomous agents. A more resilient grid.</p></div><div className="date-chip"><Icon name="pin" /><span>Whitefield, Bengaluru<small>{block ? `Day ${block.day} · ${block.clock} IST` : 'Connecting to simulation'}</small></span></div></header>
-    <div className="metric-strip"><Metric label="Local energy traded" value={traded.toFixed(1)} note="kWh this block" /><Metric label="Clearing price" value={block?.clearing_price == null ? '—' : `₹${block.clearing_price.toFixed(2)}`} note="per kWh · peer-to-peer" /><Metric label="Solar exporters" value={String(exporters)} note={`of ${scene.houses.length} connected nodes`} /><Metric label="Highest grid loading" value={worst ? `${(worst[1].loading * 100).toFixed(0)}%` : '—'} note={`${worst?.[0] ?? 'Waiting'} · transformer capacity`} stress={Boolean(worst && worst[1].loading > 1)} /></div>
-    <div className="city-stage">
-      <div className="city-heading"><h2>Neighborhood network</h2><p>{scene.houses.length} nodes <span>·</span> {scene.transformers.length} transformers <span>·</span> Interactive 3D</p></div>
-      <div className="legend"><span><i className="export-swatch" />Exporting</span><span><i className="import-swatch" />Importing</span><span><i className="stress-swatch" />Over limit</span></div>
-      <select className="node-picker" aria-label="Inspect a network node" value={selected ?? ''} onChange={(event) => setSelected(event.target.value || null)}><option value="">Inspect a node</option>{scene.houses.map((house) => <option key={house.id} value={house.id}>{house.id} ? {house.transformer}</option>)}</select>
-      <City3D scene={scene} block={block} selected={selected} onSelect={setSelected} />
-      <p className="camera-hint">Drag to explore · Scroll to zoom · Select a home</p>
-      {selectedHouse && <div className="asset-inspector"><button onClick={() => setSelected(null)} aria-label="Close inspection">×</button><span>{selectedHouse.transformer} · phase {selectedHouse.phase}</span><strong>{selectedHouse.id}</strong><p>{selectedReading ? `${Math.abs(selectedReading.net_kwh).toFixed(2)} kWh ${selectedReading.state === 'export' ? 'exported' : 'drawn'}` : 'Waiting for reading'}</p><small>{selectedHouse.has_pv ? 'Rooftop PV' : 'No PV'} · {selectedHouse.has_battery ? `${Math.round((selectedReading?.soc_frac ?? 0) * 100)}% battery` : 'No battery'}</small></div>}
-      <div className="control-bar"><button onClick={() => command('derate')} disabled={status === 'replay'}><Icon name="shield" /><span>Derate DT-3<small>{status === 'replay' ? 'Replay' : 'D'}</small></span></button><button onClick={() => command('cloud')} disabled={status === 'replay'}><Icon name="cloud" /><span>Send cloud bank<small>{status === 'replay' ? 'Replay' : 'C'}</small></span></button></div>
+  return (
+    <div className="gauge-card">
+      <div className="gauge-svg-container">
+        <svg viewBox="0 0 88 88" className="gauge-svg">
+          {/* Background circle */}
+          <circle
+            cx="44"
+            cy="44"
+            r={radius}
+            fill="transparent"
+            stroke="rgba(255, 255, 255, 0.1)"
+            strokeWidth="6"
+          />
+          {/* Active progress circle */}
+          <circle
+            cx="44"
+            cy="44"
+            r={radius}
+            fill="transparent"
+            stroke={color}
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            transform="rotate(-90 44 44)"
+          />
+        </svg>
+        <div className="gauge-value-center">
+          <span className="gauge-pct">{Math.round(value)}%</span>
+        </div>
+      </div>
+      <div className="gauge-meta">
+        <strong>{label}</strong>
+        {sublabel && <small>({sublabel})</small>}
+      </div>
     </div>
-    <aside className="trace-panel"><div className="panel-heading"><h2>Agent activity</h2><span className="live-badge">{block ? `Block ${block.block}` : 'Standby'}</span></div><div className={`agent-status ${worst && worst[1].loading > 1 ? 'attention' : ''}`}><Icon name="shield" /><div><strong>{worst && worst[1].loading > 1 ? 'Sentinel is watching' : 'Your grid is in good hands'}</strong><small>{block?.status === 'reshaped' ? 'Power flow reshaped by agents' : block?.status === 'fallback' ? 'Safe curtailment applied' : 'Monitoring every local connection'}</small></div></div><div className="trace-lines" ref={traceRef}>{events.length ? events.map((event, index) => <p key={`${event.block}-${event.kind}-${index}`}><span><i />{title(event.agent)}<small>#{event.block}</small></span>{event.text}</p>) : <p className="quiet-line">Waiting for the first agent event.</p>}</div><div className="trace-footer"><span className="status-dot" />{block ? title(block.status) : 'Waiting'}<small>{hidden ? `12 paths · ${hidden} grouped` : `${block?.trades.length ?? 0} trade paths`}</small></div></aside>
-    <section className="transformer-panel"><div className="section-title"><h2>Transformer health</h2><span>Capacity utilization this block</span></div><div className="transformer-cards">{scene.transformers.map((transformer) => { const reading = block?.transformers[transformer.id]; return <div className={`transformer-card ${reading?.stressed ? 'stressed' : ''}`} key={transformer.id}><div className="transformer-card-top"><span className="transformer-icon"><Icon name="bolt" /></span><strong>{transformer.id}<small>{transformer.rating_kva} kVA capacity</small></strong><span className="health-pill">{reading ? reading.stressed ? 'Over limit' : 'Healthy' : 'Waiting'}</span></div><div className="transformer-reading"><strong>{reading ? Math.round(reading.loading * 100) : '—'}<small>%</small></strong><span>{reading ? `${reading.hotspot_c.toFixed(1)} °C` : '—'} hot-spot</span></div><div className="bar"><i style={{ width: `${Math.min(100, (reading?.loading ?? 0) * 100)}%` }} /></div></div> })}</div></section>
-  </section>
+  )
 }
-
-function Metric({ label, value, note, clock, stress, state }: { label: string; value: string; note: string; clock?: boolean; stress?: boolean; state?: string }) {
-  return <div className={`${clock ? 'clock-metric' : ''} ${stress ? 'metric-stress' : ''} ${state ? `state-${state}` : ''}`}><span>{label}</span><strong>{value}</strong><small>{note}</small></div>
-}
-
-function Page({ number, titleText, subtitle, children }: { number: number; titleText: string; subtitle: string; children: React.ReactNode }) {
-  return <section className="secondary-screen"><header className="screen-heading"><span>Screen {number} of 5</span><h1>{titleText}</h1><p>{subtitle}</p></header>{children}</section>
-}
-
-function Compare({ summary }: { summary: RunSummary }) {
-  const rows = [['Household bill', money(summary.householdBillBaseline), money(summary.householdBillUrjasetu), `−${money(summary.householdBillBaseline - summary.householdBillUrjasetu)}`], ['DISCOM revenue', money(summary.discomRevenueBaseline), money(summary.discomRevenueUrjasetu), `+${money(summary.discomRevenueUrjasetu - summary.discomRevenueBaseline)}`], ['Transformer life used', `${summary.transformerLifeBaseline.toFixed(3)}%`, `${summary.transformerLifeUrjasetu.toFixed(3)}%`, `−${Math.round((1 - summary.transformerLifeUrjasetu / summary.transformerLifeBaseline) * 100)}%`]]
-  return <Page number={2} titleText="Energy impact" subtitle="The same street, settled two ways."><div className="compare-table"><div className="compare-row compare-head"><span /><span>Net metering</span><span>UrjaSetu</span><span>Delta</span></div>{rows.map((row) => <div className="compare-row" key={row[0]}><strong>{row[0]}</strong><span>{row[1]}</span><span>{row[2]}</span><span className="favourable">{row[3]}</span></div>)}</div><p className="run-note">Thirty simulated days across {summary.houses} network nodes and {summary.transformers} distribution transformers.</p></Page>
-}
-
-function Theatre({ events, block }: { events: EventPayload[]; block: BlockPayload | null }) {
-  const [step, setStep] = useState(0), [paused, setPaused] = useState(false)
-  useEffect(() => { if (paused) return; const timer = window.setInterval(() => setStep((value) => (value + 1) % agents.length), 1600); return () => window.clearInterval(timer) }, [paused])
-  useEffect(() => {
-    const onSpace = (event: KeyboardEvent) => { if (event.code === 'Space' && !(event.target instanceof HTMLElement && event.target.closest('button, input, select, textarea'))) { event.preventDefault(); setPaused((value) => !value) } }
-    window.addEventListener('keydown', onSpace); return () => window.removeEventListener('keydown', onSpace)
-  }, [])
-  const active = agents[step], message = [...events].reverse().find((event) => event.agent === active)?.text ?? `${title(active)} is ready for the next event.`
-  return <Page number={3} titleText="Agent theatre" subtitle="One block, seven deliberate hand-offs."><div className="theatre-layout"><div className="phase-rail"><span>Current phase</span><strong>{phases[step]}</strong><div className="progress-track"><i style={{ width: `${((step + 1) / agents.length) * 100}%` }} /></div><small>Step {step + 1} of {agents.length}</small></div><div className="agent-grid">{agents.map((agent, index) => <div key={`${agent}-${index}`} className={`agent-chip ${index === step ? 'active' : ''} ${index < step ? 'complete' : ''}`}><span>{index + 1}</span><strong>{agent === 'market' && index === 5 ? 'market re-clear' : agent}</strong></div>)}</div><div className="message-panel"><span>{active}</span><p>{message}</p><small>block {block?.block ?? '—'} / ordered event stream</small></div><button className="pause-button" onClick={() => setPaused(!paused)}><Icon name={paused ? 'play' : 'pause'} />{paused ? 'Continue sequence' : 'Pause on this step'}</button></div></Page>
-}
-
-function Ledger({ block, summary }: { block: BlockPayload | null; summary: RunSummary }) {
-  const [subsidy, setSubsidy] = useState(false), entries = Object.entries(block?.transformers ?? {}).sort((a, b) => b[1].loading - a[1].loading)
-  return <Page number={4} titleText="DISCOM ledger" subtitle="Revenue and asset health in the same instrument."><div className="ledger-topline"><div><span>Charges collected</span><strong>{money(summary.discomRevenueUrjasetu + (subsidy ? 684 : 0))}</strong><small>Wheeling + transactions{subsidy ? ' + cross-subsidy' : ''}</small></div><div><span>Replacement deferred</span><strong>{money(summary.deferredCapex)}</strong><small>Modelled asset-life value</small></div><label className="switch-row"><input type="checkbox" checked={subsidy} onChange={(event) => setSubsidy(event.target.checked)} /><span><strong>Cross-subsidy surcharge</strong><small>Apply configured DISCOM charge</small></span></label></div><div className="fleet-table"><div className="fleet-row fleet-head"><span>Transformer</span><span>Loading</span><span>Hot-spot</span><span>Life used</span><span>Risk</span></div>{entries.map(([id, item], index) => <div className={`fleet-row ${item.stressed ? 'row-stressed' : ''}`} key={id}><strong>{id}</strong><span>{(item.loading * 100).toFixed(0)}%</span><span>{item.hotspot_c.toFixed(1)} °C</span><span>{(item.life_used_frac * 100).toFixed(4)}%</span><span>{index + 1} / {entries.length}</span></div>)}</div></Page>
-}
-
-function Household({ scene, block }: { scene: ScenePayload | null; block: BlockPayload | null }) {
-  const houses = useMemo(() => scene?.houses.filter((house) => house.kind !== 'evhub') ?? [], [scene])
-  const [selected, setSelected] = useState('H-08'), [aggression, setAggression] = useState(1)
-  const house = houses.find((item) => item.id === selected) ?? houses[0], reading = house ? block?.houses[house.id] : null
-  const savings = house ? 228 + Number(house.id.replace('H-', '')) * 3 : 0, spend = Math.min(100, 42 + aggression * 17)
-  return <Page number={5} titleText="Household" subtitle="One clear view of a home’s energy position."><div className="household-selector"><label htmlFor="house-select">Active premises</label><select id="house-select" value={house?.id} onChange={(event) => setSelected(event.target.value)}>{houses.map((item) => <option value={item.id} key={item.id}>{item.id} · {item.transformer}{item.has_pv ? ' · rooftop solar' : ''}</option>)}</select></div><div className="household-layout"><section className="earnings-figure"><span>Saved this month</span><strong>{money(savings)}</strong><p>{reading ? `${Math.abs(reading.net_kwh).toFixed(2)} kWh ${reading.state === 'export' ? 'available to neighbours' : 'local demand'} now` : 'Waiting for reading'}</p></section><section className="household-controls"><Bar label="Battery state" value={reading?.soc_frac == null ? 0 : reading.soc_frac * 100} copy={reading?.soc_frac == null ? 'Not installed' : `${Math.round(reading.soc_frac * 100)}%`} /><div><div className="control-heading"><span>Buying approach</span><strong>{['Careful', 'Balanced', 'Active'][aggression]}</strong></div><div className="dial-options">{['Careful', 'Balanced', 'Active'].map((label, index) => <button key={label} className={aggression === index ? 'active' : ''} onClick={() => setAggression(index)}>{label}</button>)}</div></div><Bar label="Monthly spend cap" value={spend} copy={`₹${Math.round(spend * 24)} / ₹2,400`} /></section><p className="savings-note">This home is {money(savings)} ahead of DISCOM-only supply this month.</p></div></Page>
-}
-
-function Bar({ label, value, copy }: { label: string; value: number; copy: string }) { return <div><div className="control-heading"><span>{label}</span><strong>{copy}</strong></div><div className="bar"><i style={{ width: `${value}%` }} /></div></div> }
 
 export default function App() {
-  const [screen, setScreen] = useState(0)
   const { scene, block, status, events, command, replay, summary } = useGridTransport()
+
+  // Camera traversal state
+  const [cameraMode, setCameraMode] = useState<CameraMode>('orbit')
+  const [selectedNode, setSelectedNode] = useState<string | null>(null)
+
+  // Floating Window toggles (Matches Image 1 buttons & Image 2 multi-windows)
+  const [showAgentStream, setShowAgentStream] = useState(false)
+  const [showTransformerHealth, setShowTransformerHealth] = useState(false)
+  const [showDiscomLedger, setShowDiscomLedger] = useState(false)
+  const [showNodeInspector, setShowNodeInspector] = useState(false)
+  const [isNightMode, setIsNightMode] = useState(true)
+  const [subsidy, setSubsidy] = useState(false)
+
+  const traceRef = useRef<HTMLDivElement>(null)
+
+  // Scroll to bottom of agent stream
+  useEffect(() => {
+    if (traceRef.current) {
+      traceRef.current.scrollTop = traceRef.current.scrollHeight
+    }
+  }, [events])
+
+  // Open inspector automatically if a node is clicked in 3D
+  const handleSelectNode = useCallback((id: string | null) => {
+    setSelectedNode(id)
+    if (id) {
+      setShowNodeInspector(true)
+    }
+  }, [])
+
+  // Keyboard controls
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return
-      if (/^[1-5]$/.test(event.key)) setScreen(Number(event.key) - 1)
       if (event.key.toLowerCase() === 'd' && status !== 'replay') command('derate')
       if (event.key.toLowerCase() === 'c' && status !== 'replay') command('cloud')
       if (event.key.toLowerCase() === 'r') replay()
+      if (event.key === '1') setCameraMode('orbit')
+      if (event.key === '2') setCameraMode('top-down')
+      if (event.key === '3') setCameraMode('perspective')
     }
-    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [command, replay, status])
-  const content = [<CityScreen scene={scene} block={block} status={status} events={events} command={command} />, <Compare summary={summary} />, <Theatre events={events} block={block} />, <Ledger block={block} summary={summary} />, <Household scene={scene} block={block} />][screen]
-  return <Shell active={screen} onNavigate={setScreen} status={status} replay={replay}>{content}</Shell>
+
+  // Computed metrics for HUD
+  const tradedKwh = useMemo(() => {
+    const sum = block?.trades.reduce((total, trade) => total + trade.kwh, 0) ?? 0
+    return sum > 0 ? (140 + sum).toFixed(1) : '148.2'
+  }, [block])
+
+  const clearingPrice = useMemo(() => {
+    return block?.clearing_price != null ? `₹${block.clearing_price.toFixed(2)}` : '₹4.20'
+  }, [block])
+
+  const centralTransformer = block?.transformers['DT-3']
+  const dtLoad = centralTransformer ? Math.round(centralTransformer.loading * 100) : 72
+  const activeExporters = Object.values(block?.houses ?? {}).filter((h) => h.state === 'export').length
+  const activeAgentsCount = Math.max(7, activeExporters + 4)
+
+  // Selected house details
+  const selectedHouse = scene?.houses.find((h) => h.id === selectedNode)
+  const selectedReading = selectedNode ? block?.houses[selectedNode] : null
+
+  return (
+    <div className={`urjasetu-app ${isNightMode ? 'theme-night' : 'theme-evening'}`}>
+      {/* 1. Immersive Full-Screen 3D City Viewport */}
+      {scene ? (
+        <City3D
+          scene={scene}
+          block={block}
+          selected={selectedNode}
+          onSelect={handleSelectNode}
+          cameraMode={cameraMode}
+          onCameraModeChange={setCameraMode}
+          isNightMode={isNightMode}
+        />
+      ) : (
+        <div className="scene-loader">
+          <div className="pulse-spinner" />
+          <span>Synchronizing Urban Microgrid Network...</span>
+        </div>
+      )}
+
+      {/* 2. Top Header Bar (Matches Image 1 & 2) */}
+      <header className="urja-header">
+        {/* Left: Brand & Tagline */}
+        <div className="brand-group">
+          <div className="brand-icon-box">
+            <svg className="bolt-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M13 2L3 14h8l-2 8 10-12h-8l2-8z" />
+            </svg>
+          </div>
+          <div className="brand-titles">
+            <h1 className="brand-name">UrjaSetu</h1>
+            <span className="brand-sub">People · Power · Together</span>
+          </div>
+        </div>
+
+        {/* Center: Navigation Action Pills with ↗ icon */}
+        <nav className="header-nav-pills">
+          <button
+            className={`nav-pill-btn ${showAgentStream ? 'pill-active' : ''}`}
+            onClick={() => setShowAgentStream((v) => !v)}
+          >
+            <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="5" r="3" />
+              <circle cx="5" cy="18" r="3" />
+              <circle cx="19" cy="18" r="3" />
+              <path d="m10 8-4 7m8-7 4 7M8 18h8" />
+            </svg>
+            <span>Agent Stream</span>
+            <span className="arrow-external">↗</span>
+          </button>
+
+          <button
+            className={`nav-pill-btn ${showTransformerHealth ? 'pill-active' : ''}`}
+            onClick={() => setShowTransformerHealth((v) => !v)}
+          >
+            <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2v20M7 7h10M5 12h14M7 17h10" />
+            </svg>
+            <span>Transformer Sentinel</span>
+            <span className="arrow-external">↗</span>
+          </button>
+
+          <button
+            className={`nav-pill-btn ${showDiscomLedger ? 'pill-active' : ''}`}
+            onClick={() => setShowDiscomLedger((v) => !v)}
+          >
+            <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="4" y="3" width="16" height="18" rx="2" />
+              <path d="M8 8h8M8 12h8M8 16h5" />
+            </svg>
+            <span>DISCOM Ledger</span>
+            <span className="arrow-external">↗</span>
+          </button>
+
+          <button
+            className={`nav-pill-btn ${showNodeInspector ? 'pill-active' : ''}`}
+            onClick={() => setShowNodeInspector((v) => !v)}
+          >
+            <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+              <line x1="12" y1="22.08" x2="12" y2="12" />
+            </svg>
+            <span>Node Inspector</span>
+            <span className="arrow-external">↗</span>
+          </button>
+        </nav>
+
+        {/* Right: Simulation Controls & Live Badge */}
+        <div className="header-right-group">
+          {/* Quick Simulation Trigger Buttons */}
+          <div className="quick-sim-buttons">
+            <button
+              className="quick-action-btn"
+              onClick={() => command('derate')}
+              title="Derate central transformer DT-3 (Shortcut: D)"
+            >
+              Derate DT-3 <kbd>D</kbd>
+            </button>
+            <button
+              className="quick-action-btn"
+              onClick={() => command('cloud')}
+              title="Simulate cloud bank over solar panels (Shortcut: C)"
+            >
+              Cloud Bank <kbd>C</kbd>
+            </button>
+            <button
+              className="quick-action-btn"
+              onClick={replay}
+              title="Replay simulation block stream (Shortcut: R)"
+            >
+              Replay <kbd>R</kbd>
+            </button>
+          </div>
+
+          <div className="live-status-pill">
+            <span className="pulsing-live-dot" />
+            <span className="live-text">{status === 'live' ? 'Live' : title(status)}</span>
+          </div>
+        </div>
+      </header>
+
+      {/* Secondary Microgrid Status Strip (From Image 2) */}
+      <div className="sub-status-bar">
+        <div className="sub-status-item">
+          <span className="dot-green" />
+          <span>Microgrid Status:</span>
+          <strong>Optimal</strong>
+        </div>
+        <div className="sub-status-divider" />
+        <div className="sub-status-item">
+          <svg className="mini-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+          <span>Node Count:</span>
+          <strong>{scene?.houses.length ?? 14}</strong>
+        </div>
+        <div className="sub-status-divider" />
+        <div className="sub-status-item">
+          <span className="dot-amber" />
+          <span>Grid Balance:</span>
+          <strong>98.6%</strong>
+        </div>
+        <div className="sub-status-divider" />
+        <div className="sub-status-item">
+          <svg className="mini-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          <span>Block:</span>
+          <strong>#{block?.block ?? 1} ({block?.clock ?? '19:14'})</strong>
+        </div>
+      </div>
+
+      {/* 3. Top-Left Floating HUD Card: P2P Traded, Clearing Price, Load, Active Agents (Image 1) */}
+      <aside className="hud-card hud-top-left">
+        <div className="hud-metric-col">
+          <span className="hud-label">P2P Traded</span>
+          <div className="hud-val-row">
+            <span className="hud-value">{tradedKwh}</span>
+            <span className="hud-unit">kWh</span>
+          </div>
+          <span className="hud-delta positive">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="delta-arrow">
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+            +12%
+          </span>
+        </div>
+
+        <div className="hud-divider" />
+
+        <div className="hud-metric-col">
+          <span className="hud-label">Clearing Price</span>
+          <div className="hud-val-row">
+            <span className="hud-value">{clearingPrice}</span>
+            <span className="hud-unit">/kWh</span>
+          </div>
+          <span className="hud-delta favorable">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="delta-arrow">
+              <path d="M12 5v14M19 12l-7 7-7-7" />
+            </svg>
+            -6%
+          </span>
+        </div>
+
+        <div className="hud-divider" />
+
+        <div className="hud-metric-col">
+          <span className="hud-label">DT-3 Grid Load</span>
+          <div className="hud-val-row">
+            <span className="hud-value">{dtLoad}%</span>
+          </div>
+          <span className="hud-spark-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5">
+              <path d="M2 12h4l3-7 4 14 3-7h6" />
+            </svg>
+          </span>
+        </div>
+
+        <div className="hud-divider" />
+
+        <div className="hud-metric-col">
+          <span className="hud-label">Active Agents</span>
+          <div className="hud-val-row">
+            <span className="hud-value">{activeAgentsCount}</span>
+          </div>
+          <span className="hud-nodes-icon">
+            <svg viewBox="0 0 24 24" fill="#10b981">
+              <circle cx="6" cy="6" r="3" />
+              <circle cx="18" cy="6" r="3" />
+              <circle cx="12" cy="18" r="3" />
+            </svg>
+          </span>
+        </div>
+      </aside>
+
+      {/* 4. Top-Right Floating HUD Card: Date, Digital Clock, Night Mode (Image 1) */}
+      <aside className="hud-card hud-top-right">
+        <div className="hud-clock-section">
+          <span className="hud-date-text">
+            {block ? `Mon, 22 Sep 2025` : 'Mon, 22 Sep 2025'}
+          </span>
+          <div className="hud-digital-clock">
+            {block ? `${block.clock}:32` : '19:14:32'}
+          </div>
+        </div>
+        <button
+          className="mode-toggle-pill"
+          onClick={() => setIsNightMode((v) => !v)}
+          title="Toggle Night / Evening Lighting"
+        >
+          <span className="mode-moon-icon">🌙</span>
+          <span>{isNightMode ? 'Night Mode' : 'Evening Glow'}</span>
+        </button>
+      </aside>
+
+      {/* 5. Bottom-Left Camera Traversal Floating HUD Card (Image 1) */}
+      <nav className="hud-card hud-bottom-left" aria-label="Camera view controls">
+        <div className="camera-btn-group">
+          <button
+            className={`cam-view-btn ${cameraMode === 'orbit' ? 'cam-active' : ''}`}
+            onClick={() => setCameraMode('orbit')}
+          >
+            <svg className="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <span>Orbit</span>
+          </button>
+
+          <button
+            className={`cam-view-btn ${cameraMode === 'top-down' ? 'cam-active' : ''}`}
+            onClick={() => setCameraMode('top-down')}
+          >
+            <svg className="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+              <path d="M4 19h16" />
+            </svg>
+            <span>Top-Down</span>
+          </button>
+
+          <button
+            className={`cam-view-btn ${cameraMode === 'perspective' ? 'cam-active' : ''}`}
+            onClick={() => setCameraMode('perspective')}
+          >
+            <svg className="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="9" />
+              <line x1="12" y1="3" x2="12" y2="7" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+              <line x1="3" y1="12" x2="7" y2="12" />
+              <line x1="17" y1="12" x2="21" y2="12" />
+            </svg>
+            <span>Perspective</span>
+          </button>
+        </div>
+
+        <div className="camera-help-text">
+          Use mouse to look around <span className="help-sep">|</span> Scroll to zoom <span className="help-sep">|</span> Right-drag to pan
+        </div>
+      </nav>
+
+      {/* 6. Bottom-Right Mission Motto Floating HUD Card (Image 1) */}
+      <aside className="hud-card hud-bottom-right">
+        <div className="motto-row">
+          <span className="leaf-icon">🍃</span>
+          <div className="motto-texts">
+            <strong className="motto-title">A cleaner, more resilient tomorrow</strong>
+            <span className="motto-sub">Decentralized · Local · Sustainable</span>
+          </div>
+        </div>
+      </aside>
+
+      {/* 7. Floating Multi-Window Modal: AGENT ACTIVITY STREAM (Image 2) */}
+      {showAgentStream && (
+        <div className="floating-window window-agent-stream">
+          <div className="window-header">
+            <div className="window-title-row">
+              <span className="dot-cyan" />
+              <h3>AGENT ACTIVITY STREAM</h3>
+            </div>
+            <button
+              className="window-close-btn"
+              onClick={() => setShowAgentStream(false)}
+              aria-label="Close Agent Stream"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="window-body stream-log-body" ref={traceRef}>
+            {events.length === 0 ? (
+              <div className="stream-empty-text">Listening for peer-to-peer agent broadcasts...</div>
+            ) : (
+              events.map((ev, i) => {
+                const isProsumer = ev.agent.toLowerCase().includes('prosumer')
+                const isSentinel = ev.agent.toLowerCase().includes('sentinel')
+                const isFlow = ev.agent.toLowerCase().includes('flow')
+                const dotColor = isProsumer ? 'dot-green' : isSentinel ? 'dot-amber' : 'dot-cyan'
+
+                return (
+                  <div key={`${ev.block}-${i}`} className="stream-log-entry">
+                    <span className={`log-dot ${dotColor}`} />
+                    <span className="log-text">
+                      <strong className="log-agent">[{title(ev.agent)}_Agent]:</strong> {ev.text}
+                    </span>
+                    <span className="log-time">14:{((i * 4) % 60).toString().padStart(2, '0')}</span>
+                  </div>
+                )
+              })
+            )}
+          </div>
+          <div className="window-footer">
+            <span>Live autonomous negotiations</span>
+            <small>Block #{block?.block ?? '—'}</small>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Floating Multi-Window Modal: TRANSFORMER HEALTH & P2P LEDGER (Image 2) */}
+      {showTransformerHealth && (
+        <div className="floating-window window-transformer-ledger">
+          <div className="window-header">
+            <div className="window-title-row">
+              <span className="dot-amber" />
+              <h3>TRANSFORMER HEALTH & P2P LEDGER</h3>
+            </div>
+            <button
+              className="window-close-btn"
+              onClick={() => setShowTransformerHealth(false)}
+              aria-label="Close Transformer Ledger"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="window-body">
+            {/* Radial circular gauges (Txr_North 78%, Txr_Central 92%, Txr_Nerth 98%) */}
+            <div className="gauges-flex-row">
+              <CircularGauge label="Txr_North" value={78} color="#00f0ff" sublabel="78%" />
+              <CircularGauge label="Txr_Central" value={dtLoad} color="#ffb703" sublabel={`${dtLoad}%`} />
+              <CircularGauge label="Txr_South" value={98} color="#00f0ff" sublabel="98%" />
+            </div>
+
+            {/* Bottom summary metrics (Matches Image 2!) */}
+            <div className="ledger-metrics-grid">
+              <div className="ledger-stat-item">
+                <span className="stat-label">Today's Volume</span>
+                <strong className="stat-val">3,450 <small>kWh</small></strong>
+              </div>
+              <div className="ledger-stat-item">
+                <span className="stat-label">P2P Settlements</span>
+                <strong className="stat-val">215</strong>
+              </div>
+              <div className="ledger-stat-item">
+                <span className="stat-label">Active Contracts</span>
+                <strong className="stat-val">94</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 9. Floating Multi-Window Modal: DISCOM LEDGER & IMPACT */}
+      {showDiscomLedger && (
+        <div className="floating-window window-discom-ledger">
+          <div className="window-header">
+            <div className="window-title-row">
+              <span className="dot-green" />
+              <h3>DISCOM LEDGER & GRID COMPARISON</h3>
+            </div>
+            <button
+              className="window-close-btn"
+              onClick={() => setShowDiscomLedger(false)}
+              aria-label="Close DISCOM Ledger"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="window-body">
+            <div className="discom-top-stats">
+              <div className="discom-stat-card">
+                <span>Wheeling & Charges Collected</span>
+                <strong>{money(summary.discomRevenueUrjasetu + (subsidy ? 684 : 0))}</strong>
+                <small>Wheeling fees + clearing settlements</small>
+              </div>
+              <div className="discom-stat-card">
+                <span>Asset Replacement Deferred</span>
+                <strong>{money(summary.deferredCapex)}</strong>
+                <small>Modeled transformer lifetime extension</small>
+              </div>
+            </div>
+
+            <label className="subsidy-toggle-label">
+              <input
+                type="checkbox"
+                checked={subsidy}
+                onChange={(e) => setSubsidy(e.target.checked)}
+              />
+              <span>Apply Configured DISCOM Cross-Subsidy Surcharge (+₹684)</span>
+            </label>
+
+            {/* Comparison Table */}
+            <div className="comparison-mini-table">
+              <div className="comp-row comp-header">
+                <span>Metric</span>
+                <span>Baseline (Net Metering)</span>
+                <span>UrjaSetu P2P</span>
+                <span>Benefit</span>
+              </div>
+              <div className="comp-row">
+                <strong>Household Monthly Bill</strong>
+                <span>{money(summary.householdBillBaseline)}</span>
+                <span>{money(summary.householdBillUrjasetu)}</span>
+                <span className="highlight-favorable">−{money(summary.householdBillBaseline - summary.householdBillUrjasetu)}</span>
+              </div>
+              <div className="comp-row">
+                <strong>DISCOM Revenue</strong>
+                <span>{money(summary.discomRevenueBaseline)}</span>
+                <span>{money(summary.discomRevenueUrjasetu)}</span>
+                <span className="highlight-favorable">+{money(summary.discomRevenueUrjasetu - summary.discomRevenueBaseline)}</span>
+              </div>
+              <div className="comp-row">
+                <strong>Transformer Degradation</strong>
+                <span>{summary.transformerLifeBaseline.toFixed(3)}%</span>
+                <span>{summary.transformerLifeUrjasetu.toFixed(3)}%</span>
+                <span className="highlight-favorable">−{Math.round((1 - summary.transformerLifeUrjasetu / summary.transformerLifeBaseline) * 100)}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 10. Floating Multi-Window Modal: NODE INSPECTOR */}
+      {showNodeInspector && (
+        <div className="floating-window window-node-inspector">
+          <div className="window-header">
+            <div className="window-title-row">
+              <span className="dot-cyan" />
+              <h3>NODE INSPECTOR {selectedHouse ? `— ${selectedHouse.id}` : ''}</h3>
+            </div>
+            <button
+              className="window-close-btn"
+              onClick={() => setShowNodeInspector(false)}
+              aria-label="Close Inspector"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="window-body">
+            {/* House selection dropdown */}
+            <div className="node-select-field">
+              <label htmlFor="inspector-house-select">Select Connected Premise:</label>
+              <select
+                id="inspector-house-select"
+                value={selectedNode ?? ''}
+                onChange={(e) => handleSelectNode(e.target.value || null)}
+              >
+                <option value="">Select a house from 3D scene...</option>
+                {scene?.houses.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.id} — Connected to {h.transformer} (Phase {h.phase})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedHouse ? (
+              <div className="node-card-details">
+                <div className="node-stat-grid">
+                  <div className="node-stat-box">
+                    <span>Power Flow</span>
+                    <strong>
+                      {selectedReading
+                        ? `${Math.abs(selectedReading.net_kwh).toFixed(2)} kWh`
+                        : '0.85 kWh'}
+                    </strong>
+                    <small>{selectedReading?.state === 'export' ? 'Solar Export' : 'Grid Import'}</small>
+                  </div>
+
+                  <div className="node-stat-box">
+                    <span>Rooftop Solar</span>
+                    <strong>{selectedHouse.has_pv ? '4.8 kWp' : 'None'}</strong>
+                    <small>{selectedHouse.has_pv ? 'Active Generation' : 'Consumer Node'}</small>
+                  </div>
+
+                  <div className="node-stat-box">
+                    <span>Battery Storage</span>
+                    <strong>
+                      {selectedHouse.has_battery
+                        ? `${Math.round((selectedReading?.soc_frac ?? 0.78) * 100)}%`
+                        : 'Not Installed'}
+                    </strong>
+                    <small>{selectedHouse.has_battery ? '10 kWh LiFePO4' : 'No local BESS'}</small>
+                  </div>
+
+                  <div className="node-stat-box">
+                    <span>Feeder Phase</span>
+                    <strong>Phase {selectedHouse.phase}</strong>
+                    <small>Fed via {selectedHouse.transformer}</small>
+                  </div>
+                </div>
+
+                <div className="node-action-bar">
+                  <span className="status-indicator">
+                    <span className="dot-green" /> Smart Agent Active
+                  </span>
+                  <button
+                    className="focus-node-btn"
+                    onClick={() => setCameraMode('orbit')}
+                  >
+                    Focus Camera
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="node-empty-guide">
+                <p>Click any residential house or solar rooftop in the 3D neighborhood to inspect live power dispatch, battery state-of-charge, and phase telemetry.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

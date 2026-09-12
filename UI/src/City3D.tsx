@@ -1,4 +1,4 @@
-﻿import { Html, Line, OrbitControls, QuadraticBezierLine } from '@react-three/drei'
+import { Html, Line, OrbitControls, QuadraticBezierLine } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
@@ -7,286 +7,896 @@ import { layoutScene } from './layout'
 import type { BlockPayload, SceneHouse, ScenePayload, TradePayload } from './types'
 
 type Point = [number, number, number]
-type Palette = Record<'ground' | 'raised' | 'rule' | 'ink' | 'quiet' | 'export' | 'import' | 'curtailed' | 'idle' | 'stress' | 'road' | 'lawn' | 'leaf' | 'leafLight' | 'trunk' | 'glass' | 'solar' | 'solarGrid' | 'wall' | 'wallWarm' | 'roof' | 'metal' | 'stripe', string>
-type Part = { position: Point; scale: Point; rotation?: Point; house?: string }
-type Batch = { color: string; parts: Part[]; shape: 'box' | 'leaf' | 'trunk' }
-type CityProps = { scene: ScenePayload; block: BlockPayload | null; selected: string | null; onSelect: (id: string | null) => void }
 
-function paletteFromCss(): Palette {
-  const css = getComputedStyle(document.documentElement)
-  const read = (name: string) => css.getPropertyValue(name).trim()
-  return {
-    ground: read('--map-ground'), raised: read('--ground-raised'), rule: read('--rule'), ink: read('--ink'), quiet: read('--ink-quiet'),
-    export: read('--export'), import: read('--import'), curtailed: read('--curtailed'), idle: read('--idle'), stress: read('--stress'),
-    road: read('--city-road'), lawn: read('--city-lawn'), leaf: read('--city-leaf'), leafLight: read('--city-leaf-light'), trunk: read('--city-trunk'),
-    glass: read('--city-glass'), solar: read('--city-solar'), solarGrid: read('--city-solar-grid'), wall: read('--city-wall'), wallWarm: read('--city-wall-warm'),
-    roof: read('--city-roof'), metal: read('--city-metal'), stripe: read('--city-stripe'),
-  }
+export type CameraMode = 'orbit' | 'top-down' | 'perspective'
+
+type CityProps = {
+  scene: ScenePayload
+  block: BlockPayload | null
+  selected: string | null
+  onSelect: (id: string | null) => void
+  cameraMode?: CameraMode
+  onCameraModeChange?: (mode: CameraMode) => void
+  isNightMode?: boolean
 }
 
-const buildingHeight = (house: SceneHouse) => house.kind === 'evhub' ? 1.15 : 1.05 + (Number(house.id.replace(/\D/g, '')) % 4) * 0.46
+type Part = { position: Point; scale: Point; rotation?: Point; house?: string }
+type Batch = {
+  key: string
+  color: string
+  parts: Part[]
+  shape: 'box' | 'leaf' | 'trunk'
+  materialType?: 'standard' | 'glass' | 'solar' | 'metal' | 'lawn' | 'road'
+}
+
+// High-Contrast Twilight Architectural Palette matching Image 1
+const NIGHT_PALETTE = {
+  background: '#101726',   // Luminous twilight sky navy
+  ground: '#0c121e',       // Surrounding peripheral terrain
+  baseplate: '#161e2b',    // Elevated neighborhood platform
+  lawn: '#223d30',         // Rich dusk turf green - clearly distinct from road!
+  road: '#273243',         // Clear dark asphalt grey
+  stripe: '#ffffff',       // Crisp white road markings
+  curb: '#475569',         // Concrete curbs
+  raised: '#334155',       // Foundation plinths & slabs
+  
+  // Building Walls (High Contrast! Clearly distinct from roofs, lawns, and sky)
+  wall1: '#c8d3e2',        // Crisp architectural slate-white
+  wall2: '#b8c5d6',        // Modern warm architectural grey
+  wall3: '#d6deea',        // Bright modern stucco
+  
+  // Roofs (Dark architectural slate - distinct from light walls!)
+  roof: '#2d3748',         // Charcoal slate roof
+  parapet: '#4a5568',      // Distinct parapet cap
+  metal: '#64748b',        // Railings and window frames
+  door: '#78593d',         // Warm natural wood door
+  doorCanopy: '#e2e8f0',   // White entry porch
+  
+  glass: '#ffe8a3',        // Warm incandescent glowing windows
+  solarMount: '#1e293b',   // Dark metal mounting frame
+  solarCell: '#0284c7',    // Vibrant glowing deep blue PV
+  hvac: '#475569',         // Mechanical rooftop units
+  batteryBody: '#334155',  // LiFePO4 battery enclosure
+  
+  leafDark: '#1c4532',     // Lush dark forest foliage
+  leafLight: '#276347',    // Lush medium green canopy
+  trunk: '#4a3828',        // Warm wood trunk
+  
+  exportGold: '#ffb703',   // Gold P2P energy flow
+  importCyan: '#00f0ff',   // Cyan grid/transformer glow
+  stressRed: '#ef4444',    // Overload alert
+}
+
+const buildingHeight = (house: SceneHouse) =>
+  house.kind === 'evhub' ? 1.25 : 1.1 + (Number(house.id.replace(/\D/g, '')) % 4) * 0.48
 
 function cityLayout(scene: ScenePayload) {
   const layout = layoutScene(scene)
   const points = [...Object.values(layout.houses), ...Object.values(layout.transformers)]
-  const minX = Math.min(...points.map(p => p.gx)), maxX = Math.max(...points.map(p => p.gx))
-  const minY = Math.min(...points.map(p => p.gy)), maxY = Math.max(...points.map(p => p.gy))
-  const convert = (gx: number, gy: number): Point => [(gx - (minX + maxX) / 2) * 1.65, 0, (gy - (minY + maxY) / 2) * 1.75]
+  const minX = Math.min(...points.map((p) => p.gx)), maxX = Math.max(...points.map((p) => p.gx))
+  const minY = Math.min(...points.map((p) => p.gy)), maxY = Math.max(...points.map((p) => p.gy))
+  const convert = (gx: number, gy: number): Point => [
+    (gx - (minX + maxX) / 2) * 1.85,
+    0,
+    (gy - (minY + maxY) / 2) * 1.95,
+  ]
+
   return {
-    houses: Object.fromEntries(Object.entries(layout.houses).map(([id, p]) => [id, convert(p.gx, p.gy)])) as Record<string, Point>,
-    transformers: Object.fromEntries(Object.entries(layout.transformers).map(([id, p]) => [id, convert(p.gx, p.gy)])) as Record<string, Point>,
-    width: (maxX - minX) * 1.65 + 5.4,
-    depth: (maxY - minY) * 1.75 + 5.5,
+    houses: Object.fromEntries(
+      Object.entries(layout.houses).map(([id, p]) => [id, convert(p.gx, p.gy)])
+    ) as Record<string, Point>,
+    transformers: Object.fromEntries(
+      Object.entries(layout.transformers).map(([id, p]) => [id, convert(p.gx, p.gy)])
+    ) as Record<string, Point>,
+    width: (maxX - minX) * 1.85 + 8,
+    depth: (maxY - minY) * 1.95 + 8,
+    discom: [(maxX - (minX + maxX) / 2) * 1.85 + 6.8, 0, (minY - (minY + maxY) / 2) * 1.95 - 4] as Point,
   }
 }
 
-// Architectural details are batched by material: hundreds of windows and solar cells
-// use a handful of GPU draw calls, with instance IDs retaining house selection.
-function buildArchitecture(scene: ScenePayload, layout: ReturnType<typeof cityLayout>, palette: Palette): Batch[] {
+// Build Complete Detailed Architecture with Balconies, Windows, Parapets, EV Hubs, PV Arrays
+function buildDetailedArchitecture(scene: ScenePayload, layout: ReturnType<typeof cityLayout>): Batch[] {
   const batches = new Map<string, Batch>()
-  const add = (color: string, position: Point, scale: Point, house?: string, shape: Batch['shape'] = 'box', rotation?: Point) => {
-    const key = `${shape}-${color}`
-    if (!batches.has(key)) batches.set(key, { color, shape, parts: [] })
+
+  const add = (
+    color: string,
+    position: Point,
+    scale: Point,
+    house?: string,
+    shape: Batch['shape'] = 'box',
+    rotation?: Point,
+    materialType: Batch['materialType'] = 'standard'
+  ) => {
+    const key = `${shape}-${color}-${materialType}`
+    if (!batches.has(key)) {
+      batches.set(key, { key, color, shape, materialType, parts: [] })
+    }
     batches.get(key)!.parts.push({ position, scale, house, rotation })
   }
+
   const tree = (x: number, z: number, scale = 1) => {
-    add(palette.trunk, [x, .45 * scale, z], [.13 * scale, .9 * scale, .13 * scale], undefined, 'trunk')
-    add(palette.leaf, [x, 1.12 * scale, z], [.65 * scale, .84 * scale, .65 * scale], undefined, 'leaf')
-    add(palette.leafLight, [x + .2 * scale, 1.38 * scale, z + .04], [.44 * scale, .58 * scale, .44 * scale], undefined, 'leaf')
+    add(NIGHT_PALETTE.trunk, [x, 0.45 * scale, z], [0.14 * scale, 0.9 * scale, 0.14 * scale], undefined, 'trunk')
+    add(NIGHT_PALETTE.leafDark, [x, 1.15 * scale, z], [0.7 * scale, 0.88 * scale, 0.7 * scale], undefined, 'leaf')
+    add(NIGHT_PALETTE.leafLight, [x + 0.2 * scale, 1.4 * scale, z + 0.05], [0.48 * scale, 0.6 * scale, 0.48 * scale], undefined, 'leaf')
   }
+
   const solarArray = (x: number, y: number, z: number, id?: string) => {
-    add(palette.metal, [x, y, z], [1.02, .06, .78], id, 'box', [-.17, 0, 0])
-    for (let col = 0; col < 4; col++) for (let row = 0; row < 3; row++) {
-      const pz = -.26 + row * .26
-      add(palette.solar, [x - .375 + col * .25, y + .045 + pz * -.17, z + pz], [.235, .025, .24], id, 'box', [-.17, 0, 0])
+    // Tilted Mounting rack
+    add(NIGHT_PALETTE.solarMount, [x, y, z], [1.12, 0.06, 0.88], id, 'box', [-0.18, 0, 0], 'metal')
+    // 4x3 individual high-efficiency solar cells
+    for (let col = 0; col < 4; col++) {
+      for (let row = 0; row < 3; row++) {
+        const pz = -0.28 + row * 0.28
+        add(
+          NIGHT_PALETTE.solarCell,
+          [x - 0.42 + col * 0.28, y + 0.05 + pz * -0.18, z + pz],
+          [0.25, 0.025, 0.25],
+          id,
+          'box',
+          [-0.18, 0, 0],
+          'solar'
+        )
+      }
     }
   }
+
+  // Iterate over every house / premise
   scene.houses.forEach((house, index) => {
     const [x, , z] = layout.houses[house.id]
-    const id = house.id, height = buildingHeight(house), isHub = house.kind === 'evhub'
-    add(palette.raised, [x, .035, z], [2.05, .12, 2.48], id)
+    const id = house.id
+    const height = buildingHeight(house)
+    const isHub = house.kind === 'evhub'
+
+    // 1. Foundation Slab
+    add(NIGHT_PALETTE.raised, [x, 0.04, z], [2.15, 0.12, 2.55], id)
+
+    // EV Charging Hub Model
     if (isHub) {
-      add(palette.road, [x, .11, z], [1.95, .04, 2.25], id)
-      for (const sx of [-.72, .72]) add(palette.metal, [x + sx, .69, z - .55], [.08, 1.2, .08], id)
-      add(palette.import, [x, 1.34, z - .22], [1.85, .12, 1.55], id)
-      for (const sx of [-.48, .48]) {
-        add(palette.raised, [x + sx, .44, z - .73], [.25, .64, .24], id)
-        add(palette.import, [x + sx, .5, z - .59], [.15, .25, .03], id)
-        add(palette.stripe, [x + sx, .14, z + .28], [.025, .02, 1.28], id)
-        add(palette.wallWarm, [x + sx, .32, z + .28], [.35, .32, .8], id)
-        add(palette.glass, [x + sx, .52, z + .24], [.3, .16, .38], id)
+      add(NIGHT_PALETTE.road, [x, 0.11, z], [2.05, 0.04, 2.35], id, 'box', undefined, 'road')
+      // Steel canopy columns
+      for (const sx of [-0.75, 0.75]) {
+        add(NIGHT_PALETTE.metal, [x + sx, 0.72, z - 0.55], [0.09, 1.3, 0.09], id, 'box', undefined, 'metal')
+      }
+      // Illuminated Solar Canopy Roof
+      add(NIGHT_PALETTE.raised, [x, 1.38, z - 0.22], [1.95, 0.12, 1.65], id)
+      add(NIGHT_PALETTE.solarCell, [x, 1.45, z - 0.22], [1.85, 0.04, 1.55], id, 'box', undefined, 'solar')
+
+      // Fast Charging Pedestals & parking bays
+      for (const sx of [-0.5, 0.5]) {
+        add(NIGHT_PALETTE.raised, [x + sx, 0.45, z - 0.75], [0.26, 0.68, 0.26], id)
+        add(NIGHT_PALETTE.importCyan, [x + sx, 0.52, z - 0.61], [0.16, 0.26, 0.04], id, 'box', undefined, 'glass')
+        // EV Bay pavement markings
+        add(NIGHT_PALETTE.stripe, [x + sx, 0.14, z + 0.3], [0.03, 0.02, 1.35], id)
+        // Parked EV Charging Body
+        add(NIGHT_PALETTE.wall2, [x + sx, 0.32, z + 0.3], [0.38, 0.34, 0.85], id)
+        add(NIGHT_PALETTE.glass, [x + sx, 0.53, z + 0.26], [0.32, 0.18, 0.4], id, 'box', undefined, 'glass')
       }
       return
     }
-    const wall = index % 3 === 0 ? palette.wallWarm : index % 3 === 1 ? palette.wall : palette.raised
-    add(wall, [x, height / 2 + .12, z], [1.42, height, 1.48], id)
-    add(palette.roof, [x, height + .16, z], [1.57, .13, 1.63], id)
-    // Flat terraces, parapets, front door, window reveals and projecting balconies.
-    for (const sx of [-.72, .72]) add(wall, [x + sx, height + .31, z], [.09, .24, 1.54], id)
-    add(wall, [x, height + .31, z - .72], [1.5, .24, .09], id)
-    add(palette.trunk, [x + .34, .43, z + .754], [.3, .62, .035], id)
-    add(palette.roof, [x + .34, .17, z + .92], [.55, .13, .33], id)
-    for (let floor = .64; floor < height; floor += .55) {
-      for (const sx of [-.4, .1]) {
-        add(palette.metal, [x + sx, floor, z + .752], [.35, .34, .045], id)
-        add(palette.glass, [x + sx, floor, z + .782], [.28, .27, .02], id)
+
+    // Residential House Architecture
+    const wallColor =
+      index % 3 === 0 ? NIGHT_PALETTE.wall1 : index % 3 === 1 ? NIGHT_PALETTE.wall2 : NIGHT_PALETTE.wall3
+
+    // 2. Main Building Core Walls
+    add(wallColor, [x, height / 2 + 0.12, z], [1.5, height, 1.56], id)
+
+    // 3. Flat Rooftop Terrace Slab
+    add(NIGHT_PALETTE.roof, [x, height + 0.16, z], [1.65, 0.14, 1.72], id)
+
+    // 4. Parapet Walls around roof perimeter
+    for (const sx of [-0.76, 0.76]) {
+      add(wallColor, [x + sx, height + 0.32, z], [0.1, 0.26, 1.62], id)
+    }
+    add(wallColor, [x, height + 0.32, z - 0.76], [1.58, 0.26, 0.1], id)
+
+    // 5. Ground Floor Entrance Door & Porch Awning
+    add(NIGHT_PALETTE.door, [x + 0.36, 0.44, z + 0.79], [0.32, 0.65, 0.04], id)
+    add(NIGHT_PALETTE.roof, [x + 0.36, 0.78, z + 0.95], [0.58, 0.08, 0.35], id)
+
+    // 6. Multi-Floor Window Reveals with Metal Frames and Glowing Warm Glass
+    for (let floor = 0.65; floor < height; floor += 0.56) {
+      // Front Windows
+      for (const sx of [-0.42, 0.1]) {
+        // Metallic frame
+        add(NIGHT_PALETTE.metal, [x + sx, floor, z + 0.79], [0.38, 0.36, 0.04], id, 'box', undefined, 'metal')
+        // Warm glowing illuminated glass pane
+        add(NIGHT_PALETTE.glass, [x + sx, floor, z + 0.81], [0.3, 0.28, 0.03], id, 'box', undefined, 'glass')
       }
-      for (const sz of [-.4, .25]) {
-        add(palette.glass, [x + .72, floor, z + sz], [.025, .27, .3], id)
-        add(palette.glass, [x - .72, floor, z + sz], [.025, .27, .3], id)
+
+      // Side Windows
+      for (const sz of [-0.42, 0.26]) {
+        add(NIGHT_PALETTE.glass, [x + 0.76, floor, z + sz], [0.03, 0.28, 0.32], id, 'box', undefined, 'glass')
+        add(NIGHT_PALETTE.glass, [x - 0.76, floor, z + sz], [0.03, 0.28, 0.32], id, 'box', undefined, 'glass')
       }
-      if (height > 1.5 && floor > 1) {
-        add(palette.raised, [x, floor - .22, z + .91], [1.4, .07, .4], id)
-        add(palette.metal, [x, floor - .06, z + 1.08], [1.4, .045, .035], id)
-        for (const sx of [-.63, 0, .63]) add(palette.metal, [x + sx, floor - .14, z + 1.08], [.035, .19, .035], id)
+
+      // 7. Projecting Cantilever Balcony for Upper Floors
+      if (height > 1.5 && floor > 1.0) {
+        // Balcony floor slab
+        add(NIGHT_PALETTE.raised, [x, floor - 0.24, z + 0.96], [1.45, 0.08, 0.42], id)
+        // Top handrail
+        add(NIGHT_PALETTE.metal, [x, floor - 0.06, z + 1.14], [1.45, 0.05, 0.04], id, 'box', undefined, 'metal')
+        // Vertical railing balusters
+        for (const sx of [-0.65, 0, 0.65]) {
+          add(NIGHT_PALETTE.metal, [x + sx, floor - 0.15, z + 1.14], [0.04, 0.2, 0.04], id, 'box', undefined, 'metal')
+        }
       }
     }
-    if (house.has_pv) solarArray(x, height + .44, z, id)
-    else {
-      add(palette.raised, [x - .3, height + .35, z - .2], [.4, .32, .45], id)
-      add(palette.metal, [x - .3, height + .53, z - .2], [.45, .06, .5], id)
-      add(palette.idle, [x + .34, height + .38, z - .3], [.32, .3, .32], id, 'trunk')
+
+    // 8. Rooftop Assets: Solar PV Array OR Utility HVAC Units
+    if (house.has_pv) {
+      solarArray(x, height + 0.42, z, id)
+    } else {
+      // Rooftop HVAC unit & water tank machinery
+      add(NIGHT_PALETTE.hvac, [x - 0.32, height + 0.36, z - 0.2], [0.42, 0.34, 0.46], id)
+      add(NIGHT_PALETTE.metal, [x - 0.32, height + 0.55, z - 0.2], [0.46, 0.06, 0.52], id, 'box', undefined, 'metal')
+      add(NIGHT_PALETTE.hvac, [x + 0.35, height + 0.4, z - 0.3], [0.34, 0.32, 0.34], id, 'trunk')
     }
+
+    // 9. Home BESS Battery Storage Unit
     if (house.has_battery) {
-      add(palette.raised, [x + .88, .46, z + .34], [.26, .7, .42], id)
-      add(palette.import, [x + 1.02, .5, z + .34], [.02, .25, .27], id)
+      add(NIGHT_PALETTE.batteryBody, [x + 0.94, 0.48, z + 0.36], [0.28, 0.72, 0.44], id)
+      // LED Status Screen
+      add(NIGHT_PALETTE.importCyan, [x + 1.08, 0.52, z + 0.36], [0.03, 0.26, 0.28], id, 'box', undefined, 'glass')
     }
-    add(palette.lawn, [x - .37, .115, z - 1.04], [1.22, .07, .35], id)
-    add(index % 2 ? palette.leaf : palette.leafLight, [x - .3, .27, z - 1.04], [1.12, .24, .24], id)
+
+    // 10. Front Garden Lawn & Landscaping Hedges
+    add(NIGHT_PALETTE.lawn, [x - 0.38, 0.12, z - 1.1], [1.25, 0.07, 0.38], id, 'box', undefined, 'lawn')
+    add(index % 2 ? NIGHT_PALETTE.leafDark : NIGHT_PALETTE.leafLight, [x - 0.32, 0.28, z - 1.1], [1.15, 0.25, 0.25], id, 'box')
   })
-  // Service roads follow each row of premises, with curbs and marked center lines.
-  scene.transformers.forEach(transformer => {
-    const homes = scene.houses.filter(house => house.transformer === transformer.id)
-    const xs = homes.map(h => layout.houses[h.id][0]), zs = homes.map(h => layout.houses[h.id][2])
-    const left = Math.min(...xs) - 1.1, right = Math.max(...xs) + 1.1
+
+  // 11. Service Roads, Curbs, and Painted Center Stripes
+  scene.transformers.forEach((transformer) => {
+    const homes = scene.houses.filter((h) => h.transformer === transformer.id)
+    const xs = homes.map((h) => layout.houses[h.id][0])
+    const zs = homes.map((h) => layout.houses[h.id][2])
+    const left = Math.min(...xs) - 1.2, right = Math.max(...xs) + 1.2
+
     for (const z of [...new Set(zs)]) {
-      add(palette.road, [(left + right) / 2, -.025, z + 1.46], [right - left, .065, .43])
+      add(NIGHT_PALETTE.road, [(left + right) / 2, -0.02, z + 1.5], [right - left, 0.07, 0.48], undefined, 'box', undefined, 'road')
     }
     const tz = layout.transformers[transformer.id][2]
-    add(palette.lawn, [(left + right) / 2, -.01, tz], [right - left, .08, 2.7])
-    for (const x of [left + .55, right - .55]) tree(x, tz, .9)
+    add(NIGHT_PALETTE.lawn, [(left + right) / 2, -0.01, tz], [right - left, 0.08, 2.9], undefined, 'box', undefined, 'lawn')
+    for (const x of [left + 0.6, right - 0.6]) {
+      tree(x, tz, 0.95)
+    }
   })
-  const crossX = 0
-  add(palette.road, [crossX, -.045, 0], [2.15, .1, layout.depth - .1])
-  add(palette.road, [0, -.04, .08], [layout.width - .1, .1, 1.65])
-  for (let z = -layout.depth / 2 + 1; z < layout.depth / 2; z += 1.4) add(palette.stripe, [crossX, .018, z], [.045, .012, .65])
-  for (let x = -layout.width / 2 + 1; x < layout.width / 2; x += 1.4) add(palette.stripe, [x, .018, .08], [.65, .012, .045])
-  for (const direction of [-1, 1]) for (let i = 0; i < 6; i++) {
-    add(palette.stripe, [crossX - .73 + i * .28, .02, direction * 1.55], [.16, .015, .64])
-    add(palette.stripe, [direction * 1.8, .02, -.52 + i * .24], [.65, .015, .12])
+
+  // Main Crossroad Intersections with Center Stripes
+  add(NIGHT_PALETTE.road, [0, -0.04, 0], [2.3, 0.1, layout.depth], undefined, 'box', undefined, 'road')
+  add(NIGHT_PALETTE.road, [0, -0.035, 0.08], [layout.width, 0.1, 1.8], undefined, 'box', undefined, 'road')
+
+  // Painted dashed road markings
+  for (let z = -layout.depth / 2 + 1.5; z < layout.depth / 2; z += 1.5) {
+    add(NIGHT_PALETTE.stripe, [0, 0.02, z], [0.05, 0.012, 0.7])
   }
-  for (let x = -layout.width / 2 + 1; x < layout.width / 2; x += 3.2) {
-    tree(x, layout.depth / 2 - .85, .85)
-    tree(x, -layout.depth / 2 + .85, .8)
+  for (let x = -layout.width / 2 + 1.5; x < layout.width / 2; x += 1.5) {
+    add(NIGHT_PALETTE.stripe, [x, 0.02, 0.08], [0.7, 0.012, 0.05])
   }
-  // Streetlights and a few parked cars provide scale without simulated traffic.
-  for (const z of [-8, -3, 4, 9]) {
-    add(palette.metal, [crossX + 1.2, 1.05, z], [.065, 2.1, .065])
-    add(palette.metal, [crossX + .95, 2.08, z], [.55, .07, .08])
-    add(palette.stripe, [crossX + .7, 2.03, z], [.24, .055, .16])
-    add(z > 0 ? palette.wallWarm : palette.import, [crossX - .55, .24, z + .6], [.5, .34, 1.02])
-    add(palette.glass, [crossX - .55, .46, z + .56], [.44, .2, .48])
+
+  // Periphery Trees
+  for (let x = -layout.width / 2 + 1.5; x < layout.width / 2; x += 3.5) {
+    tree(x, layout.depth / 2 - 0.9, 0.9)
+    tree(x, -layout.depth / 2 + 0.9, 0.85)
   }
+
   return [...batches.values()]
 }
 
-function ArchitectureBatch({ batch, onSelect }: { batch: Batch; onSelect: CityProps['onSelect'] }) {
+// Instanced Mesh Renderer for Architecture
+function ArchitectureBatch({
+  batch,
+  onSelect,
+}: {
+  batch: Batch
+  onSelect: CityProps['onSelect']
+}) {
   const mesh = useRef<THREE.InstancedMesh>(null)
+
   useLayoutEffect(() => {
+    if (!mesh.current) return
     const dummy = new THREE.Object3D()
     batch.parts.forEach((part, i) => {
-      dummy.position.set(...part.position); dummy.scale.set(...part.scale); dummy.rotation.set(...(part.rotation ?? [0, 0, 0])); dummy.updateMatrix()
+      dummy.position.set(...part.position)
+      dummy.scale.set(...part.scale)
+      dummy.rotation.set(...(part.rotation ?? [0, 0, 0]))
+      dummy.updateMatrix()
       mesh.current!.setMatrixAt(i, dummy.matrix)
     })
-    mesh.current!.instanceMatrix.needsUpdate = true
-    mesh.current!.computeBoundingSphere()
+    mesh.current.instanceMatrix.needsUpdate = true
+    mesh.current.computeBoundingSphere()
   }, [batch])
-  return <instancedMesh ref={mesh} args={[undefined, undefined, batch.parts.length]} castShadow receiveShadow
-    onClick={event => { const id = batch.parts[event.instanceId ?? -1]?.house; if (id) { event.stopPropagation(); onSelect(id) } }}>
-    {batch.shape === 'box' ? <boxGeometry /> : batch.shape === 'leaf' ? <icosahedronGeometry args={[1, 1]} /> : <cylinderGeometry args={[.5, .5, 1, 8]} />}
-    <meshStandardMaterial color={batch.color} roughness={.78} />
-  </instancedMesh>
+
+  // Custom materials tailored for night illumination
+  const material = useMemo(() => {
+    if (batch.materialType === 'glass') {
+      // Warm glowing night windows
+      return new THREE.MeshStandardMaterial({
+        color: '#ffe5a3',
+        emissive: '#ffb347',
+        emissiveIntensity: 1.35,
+        roughness: 0.2,
+      })
+    }
+    if (batch.materialType === 'solar') {
+      // Reflective blue glowing rooftop solar
+      return new THREE.MeshStandardMaterial({
+        color: '#0284c7',
+        emissive: '#0369a1',
+        emissiveIntensity: 0.85,
+        metalness: 0.85,
+        roughness: 0.18,
+      })
+    }
+    if (batch.materialType === 'metal') {
+      return new THREE.MeshStandardMaterial({
+        color: batch.color,
+        metalness: 0.75,
+        roughness: 0.35,
+      })
+    }
+    if (batch.materialType === 'road') {
+      return new THREE.MeshStandardMaterial({
+        color: batch.color,
+        roughness: 0.85,
+      })
+    }
+    if (batch.materialType === 'lawn') {
+      return new THREE.MeshStandardMaterial({
+        color: batch.color,
+        roughness: 0.9,
+      })
+    }
+    return new THREE.MeshStandardMaterial({
+      color: batch.color,
+      roughness: 0.75,
+    })
+  }, [batch])
+
+  return (
+    <instancedMesh
+      ref={mesh}
+      args={[undefined, undefined, batch.parts.length]}
+      castShadow
+      receiveShadow
+      onClick={(event) => {
+        const id = batch.parts[event.instanceId ?? -1]?.house
+        if (id) {
+          event.stopPropagation()
+          onSelect(id)
+        }
+      }}
+    >
+      {batch.shape === 'box' ? (
+        <boxGeometry />
+      ) : batch.shape === 'leaf' ? (
+        <icosahedronGeometry args={[1, 1]} />
+      ) : (
+        <cylinderGeometry args={[0.5, 0.5, 1, 8]} />
+      )}
+      <primitive object={material} attach="material" />
+    </instancedMesh>
+  )
 }
 
-function EnergyPads({ scene, block, layout, palette }: { scene: ScenePayload; block: BlockPayload | null; layout: ReturnType<typeof cityLayout>; palette: Palette }) {
+// Active Energy Glow Pads on the ground for each house
+function EnergyPads({
+  scene,
+  block,
+  layout,
+}: {
+  scene: ScenePayload
+  block: BlockPayload | null
+  layout: ReturnType<typeof cityLayout>
+}) {
   const mesh = useRef<THREE.InstancedMesh>(null)
-  const batteryHouses = useMemo(() => scene.houses.filter(house => house.has_battery), [scene])
+  const batteryHouses = useMemo(() => scene.houses.filter((h) => h.has_battery), [scene])
+
   useLayoutEffect(() => {
-    const dummy = new THREE.Object3D(), color = new THREE.Color()
+    if (!mesh.current) return
+    const dummy = new THREE.Object3D()
+    const color = new THREE.Color()
+
     scene.houses.forEach((house, index) => {
       const state = block?.houses[house.id]
       const [x, , z] = layout.houses[house.id]
-      dummy.position.set(x, .18, z + 1.22); dummy.scale.set(1.7, .065, .055); dummy.updateMatrix()
+      dummy.position.set(x, 0.16, z + 1.25)
+      dummy.scale.set(1.75, 0.06, 0.06)
+      dummy.updateMatrix()
       mesh.current!.setMatrixAt(index, dummy.matrix)
-      mesh.current!.setColorAt(index, color.set(state?.curtailed ? palette.curtailed : state?.state === 'export' ? palette.export : state?.state === 'import' ? palette.import : palette.idle))
+
+      const hex = state?.curtailed
+        ? NIGHT_PALETTE.stressRed
+        : state?.state === 'export'
+        ? NIGHT_PALETTE.exportGold
+        : state?.state === 'import'
+        ? NIGHT_PALETTE.importCyan
+        : '#334155'
+      mesh.current!.setColorAt(index, color.set(hex))
     })
+
     batteryHouses.forEach((house, index) => {
       const [x, , z] = layout.houses[house.id]
-      const level = Math.max(.01, Math.min(1, block?.houses[house.id]?.soc_frac ?? 0))
-      dummy.position.set(x + 1.025, .2 + level * .26, z + .34)
-      dummy.scale.set(.026, level * .52, .25); dummy.updateMatrix()
+      const level = Math.max(0.05, Math.min(1, block?.houses[house.id]?.soc_frac ?? 0.8))
+      dummy.position.set(x + 1.08, 0.2 + level * 0.26, z + 0.36)
+      dummy.scale.set(0.03, level * 0.52, 0.26)
+      dummy.updateMatrix()
       mesh.current!.setMatrixAt(scene.houses.length + index, dummy.matrix)
-      mesh.current!.setColorAt(scene.houses.length + index, color.set(palette.export))
+      mesh.current!.setColorAt(scene.houses.length + index, color.set(NIGHT_PALETTE.importCyan))
     })
-    mesh.current!.instanceMatrix.needsUpdate = true
-    if (mesh.current!.instanceColor) mesh.current!.instanceColor.needsUpdate = true
-    mesh.current!.computeBoundingSphere()
-  }, [scene, block, layout, palette, batteryHouses])
-  return <instancedMesh ref={mesh} args={[undefined, undefined, scene.houses.length + batteryHouses.length]}><boxGeometry /><meshBasicMaterial /></instancedMesh>
+
+    mesh.current.instanceMatrix.needsUpdate = true
+    if (mesh.current.instanceColor) mesh.current.instanceColor.needsUpdate = true
+  }, [scene, block, layout, batteryHouses])
+
+  return (
+    <instancedMesh ref={mesh} args={[undefined, undefined, scene.houses.length + batteryHouses.length]}>
+      <boxGeometry />
+      <meshBasicMaterial />
+    </instancedMesh>
+  )
 }
 
-function Transformer3D({ id, position, reading, palette }: { id: string; position: Point; reading: BlockPayload['transformers'][string] | undefined; palette: Palette }) {
-  const color = reading?.stressed ? palette.stress : palette.import
-  return <group position={position}>
-    <mesh position={[0, .08, 0]} receiveShadow><boxGeometry args={[2.65, .22, 2.35]} /><meshStandardMaterial color={palette.roof} /></mesh>
-    <mesh position={[0, .72, 0]} castShadow><boxGeometry args={[1.12, 1.12, .95]} /><meshStandardMaterial color={palette.metal} metalness={.35} roughness={.48} /></mesh>
-    {[-.65, .65].map(x => <group key={x} position={[x, .74, 0]}>{Array.from({ length: 6 }, (_, i) => <mesh key={i} position={[0, 0, -.4 + i * .16]} castShadow><boxGeometry args={[.16, .88, .065]} /><meshStandardMaterial color={palette.idle} metalness={.35} roughness={.6} /></mesh>)}</group>)}
-    {[-.35, 0, .35].map(x => <group key={x} position={[x, 1.43, 0]}><mesh><cylinderGeometry args={[.07, .1, .4, 10]} /><meshStandardMaterial color={palette.trunk} /></mesh><mesh position={[0, .05, 0]}><torusGeometry args={[.1, .03, 6, 10]} /><meshStandardMaterial color={palette.roof} /></mesh></group>)}
-    <mesh position={[0, .9, .49]}><boxGeometry args={[.23, .2, .025]} /><meshBasicMaterial color={palette.export} /></mesh>
-    <mesh position={[0, .215, 1.06]}><boxGeometry args={[2.3, .055, .045]} /><meshBasicMaterial color={color} /></mesh>
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .21, 0]}><ringGeometry args={[1.52, 1.57, 64, 1, 0, 2 * Math.PI * Math.min(1, reading?.loading ?? 0)]} /><meshBasicMaterial color={color} transparent opacity={.75} /></mesh>
-    <Html position={[0, 2.3, 0]} center zIndexRange={[2, 0]} style={{ pointerEvents: 'none' }}><div className={`map-label ${reading?.stressed ? 'stressed' : ''}`}><i />{id}<span>{reading ? `${Math.round(reading.loading * 100)}%` : '—'}</span></div></Html>
-  </group>
+// Low-poly Transmission Tower (DISCOM Substation)
+function TransmissionTower({ position }: { position: Point }) {
+  const [x, y, z] = position
+  return (
+    <group position={[x, y, z]}>
+      <mesh position={[0, 0.15, 0]} receiveShadow>
+        <boxGeometry args={[4.8, 0.3, 4.0]} />
+        <meshStandardMaterial color="#1a222f" roughness={0.7} />
+      </mesh>
+      <mesh position={[-1.3, 0.75, -0.6]} castShadow>
+        <boxGeometry args={[1.3, 0.9, 0.9]} />
+        <meshStandardMaterial color="#2d3748" metalness={0.4} roughness={0.5} />
+      </mesh>
+      <mesh position={[-1.3, 0.75, 0.6]} castShadow>
+        <boxGeometry args={[1.1, 0.9, 0.9]} />
+        <meshStandardMaterial color="#2d3748" metalness={0.4} roughness={0.5} />
+      </mesh>
+
+      <pointLight position={[-1.3, 1.4, 0]} color="#38bdf8" intensity={1.8} distance={6} />
+      <pointLight position={[1.2, 2.8, 0]} color="#f59e0b" intensity={2} distance={9} />
+
+      {/* Main High-Voltage Pylon / Tower */}
+      <group position={[1.0, 0, 0]}>
+        <mesh position={[-0.7, 3.0, -0.7]} rotation={[0.07, 0, -0.07]}>
+          <cylinderGeometry args={[0.04, 0.08, 6.0, 6]} />
+          <meshStandardMaterial color="#64748b" metalness={0.7} roughness={0.3} />
+        </mesh>
+        <mesh position={[0.7, 3.0, -0.7]} rotation={[0.07, 0, 0.07]}>
+          <cylinderGeometry args={[0.04, 0.08, 6.0, 6]} />
+          <meshStandardMaterial color="#64748b" metalness={0.7} roughness={0.3} />
+        </mesh>
+        <mesh position={[-0.7, 3.0, 0.7]} rotation={[-0.07, 0, -0.07]}>
+          <cylinderGeometry args={[0.04, 0.08, 6.0, 6]} />
+          <meshStandardMaterial color="#64748b" metalness={0.7} roughness={0.3} />
+        </mesh>
+        <mesh position={[0.7, 3.0, 0.7]} rotation={[-0.07, 0, 0.07]}>
+          <cylinderGeometry args={[0.04, 0.08, 6.0, 6]} />
+          <meshStandardMaterial color="#64748b" metalness={0.7} roughness={0.3} />
+        </mesh>
+        <mesh position={[0, 4.4, 0]}>
+          <boxGeometry args={[3.4, 0.14, 0.14]} />
+          <meshStandardMaterial color="#94a3b8" metalness={0.8} roughness={0.2} />
+        </mesh>
+        <mesh position={[0, 5.5, 0]}>
+          <boxGeometry args={[2.6, 0.14, 0.14]} />
+          <meshStandardMaterial color="#94a3b8" metalness={0.8} roughness={0.2} />
+        </mesh>
+        {[-1.6, 0, 1.6].map((off, i) => (
+          <mesh key={i} position={[off, 4.0, 0]}>
+            <cylinderGeometry args={[0.05, 0.05, 0.75, 8]} />
+            <meshStandardMaterial color="#38bdf8" emissive="#0284c7" emissiveIntensity={0.65} />
+          </mesh>
+        ))}
+      </group>
+
+      <Html position={[0, 4.8, 0]} center zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
+        <div className="hud-3d-tag tag-discom">
+          <span className="dot-discom" />
+          Grid / DISCOM
+        </div>
+      </Html>
+    </group>
+  )
 }
 
-function TradePulse({ trade, source, target, palette, index, reducedMotion }: { trade: TradePayload; source: Point; target: Point; palette: Palette; index: number; reducedMotion: boolean }) {
-  const pulse = useRef<THREE.Mesh>(null)
-  const curve = useMemo(() => {
-    const start = new THREE.Vector3(...source), end = new THREE.Vector3(...target)
-    const midpoint = start.clone().lerp(end, .5)
-    midpoint.y += Math.max(2.2, start.distanceTo(end) * .3)
-    return new THREE.QuadraticBezierCurve3(start, midpoint, end)
-  }, [source, target])
+// Central Distribution Transformer (DT-3) with Glowing Cyan Ring
+function CentralTransformer({
+  id,
+  position,
+  reading,
+}: {
+  id: string
+  position: Point
+  reading: BlockPayload['transformers'][string] | undefined
+}) {
+  const [x, y, z] = position
+  const ringRef = useRef<THREE.Mesh>(null)
+
   useFrame(({ clock }) => {
-    if (pulse.current && !reducedMotion) pulse.current.position.copy(curve.getPoint((clock.elapsedTime * .32 + index * .11) % 1))
+    if (ringRef.current) {
+      const s = 1 + Math.sin(clock.elapsedTime * 2.2) * 0.025
+      ringRef.current.scale.set(s, s, s)
+    }
   })
-  const color = trade.curtailed ? palette.curtailed : palette.export
-  return <group>
-    <QuadraticBezierLine start={curve.v0} end={curve.v2} mid={curve.v1} color={color} lineWidth={2} dashed={trade.curtailed > 0} dashScale={6} transparent opacity={.8} />
-    {!reducedMotion && <mesh ref={pulse}><sphereGeometry args={[.13, 10, 8]} /><meshBasicMaterial color={palette.raised} /></mesh>}
-  </group>
+
+  return (
+    <group position={[x, y, z]}>
+      <mesh position={[0, 0.1, 0]} receiveShadow>
+        <cylinderGeometry args={[2.5, 2.6, 0.22, 40]} />
+        <meshStandardMaterial color="#1a222e" roughness={0.7} />
+      </mesh>
+
+      {/* Glowing Neon Cyan Base Ring (Matches Image 1 & 2!) */}
+      <mesh ref={ringRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.24, 0]}>
+        <ringGeometry args={[2.1, 2.34, 64]} />
+        <meshBasicMaterial color="#00f0ff" transparent opacity={0.9} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.23, 0]}>
+        <ringGeometry args={[1.9, 2.5, 64]} />
+        <meshBasicMaterial color="#00f0ff" transparent opacity={0.22} />
+      </mesh>
+
+      {/* Transformer Core Steel Tank */}
+      <mesh position={[0, 0.9, 0]} castShadow receiveShadow>
+        <boxGeometry args={[1.6, 1.35, 1.35]} />
+        <meshStandardMaterial color="#334155" metalness={0.65} roughness={0.35} />
+      </mesh>
+
+      {/* Cooling Fins */}
+      {[-0.9, 0.9].map((offX) => (
+        <group key={offX} position={[offX, 0.9, 0]}>
+          {Array.from({ length: 7 }, (_, i) => (
+            <mesh key={i} position={[0, 0, -0.5 + i * 0.16]} castShadow>
+              <boxGeometry args={[0.2, 1.0, 0.05]} />
+              <meshStandardMaterial color="#1e293b" metalness={0.7} roughness={0.4} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+
+      {/* Bushing Terminals on top */}
+      {[-0.45, 0, 0.45].map((offX, i) => (
+        <group key={i} position={[offX, 1.75, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.07, 0.1, 0.48, 12]} />
+            <meshStandardMaterial color="#94a3b8" metalness={0.8} roughness={0.2} />
+          </mesh>
+          <mesh position={[0, 0.26, 0]}>
+            <sphereGeometry args={[0.09, 12, 12]} />
+            <meshStandardMaterial color="#f59e0b" emissive="#d97706" emissiveIntensity={0.8} />
+          </mesh>
+        </group>
+      ))}
+
+      <pointLight position={[0, 1.3, 0]} color="#00f0ff" intensity={2.0} distance={8} />
+
+      <Html position={[0, 2.8, 0]} center zIndexRange={[6, 0]} style={{ pointerEvents: 'none' }}>
+        <div className="hud-3d-tag tag-transformer">
+          <span className="dot-cyan" />
+          {id}
+          {reading && <span className="load-val">{Math.round(reading.loading * 100)}%</span>}
+        </div>
+      </Html>
+    </group>
+  )
 }
 
-function CameraRig({ width, depth, topDown, reset, focus }: { width: number; depth: number; topDown: boolean; reset: number; focus: Point | null }) {
-  const { camera, size } = useThree()
-  useLayoutEffect(() => {
-    const cam = camera as THREE.OrthographicCamera
-    cam.position.set(...(topDown ? [0, 60, .001] : [28, 34, 32]) as Point)
-    if (focus) cam.position.add(new THREE.Vector3(...focus))
-    cam.lookAt(...(focus ?? [0, 0, 0]) as Point)
-    cam.updateMatrixWorld()
-    const points = [-1, 1].flatMap(x => [-1, 1].flatMap(z => [0, 5].map(y => new THREE.Vector3(x * width / 2, y, z * depth / 2).applyMatrix4(cam.matrixWorldInverse))))
-    const extentX = Math.max(...points.map(p => p.x)) - Math.min(...points.map(p => p.x))
-    const extentY = Math.max(...points.map(p => p.y)) - Math.min(...points.map(p => p.y))
-    cam.zoom = focus ? Math.min(60, Math.min(size.width, size.height) / 7) : Math.min(size.width * .91 / extentX, size.height * .88 / extentY)
-    cam.updateProjectionMatrix()
-  }, [camera, size, width, depth, topDown, reset, focus])
-  return <OrbitControls key={`${topDown}-${reset}-${focus?.join(',')}`} makeDefault target={focus ?? [0, 0, 0]} minZoom={3} maxZoom={65} minPolarAngle={.02} maxPolarAngle={1.25} enableRotate={!topDown} enablePan={false} enableDamping dampingFactor={.09} />
+// Glowing Golden Energy Transfer Arc
+function GlowingEnergyArc({
+  source,
+  target,
+  trade,
+  index,
+}: {
+  source: Point
+  target: Point
+  trade: TradePayload
+  index: number
+}) {
+  const pulseRef = useRef<THREE.Mesh>(null)
+
+  const curve = useMemo(() => {
+    const start = new THREE.Vector3(...source)
+    const end = new THREE.Vector3(...target)
+    const dist = start.distanceTo(end)
+    const mid = start.clone().lerp(end, 0.5)
+    mid.y += Math.max(2.0, Math.min(6.5, dist * 0.44))
+    return new THREE.QuadraticBezierCurve3(start, mid, end)
+  }, [source, target])
+
+  useFrame(({ clock }) => {
+    if (pulseRef.current) {
+      const t = (clock.elapsedTime * 0.42 + index * 0.15) % 1
+      pulseRef.current.position.copy(curve.getPoint(t))
+    }
+  })
+
+  const arcColor = trade.curtailed ? '#ef4444' : '#ffb703'
+
+  return (
+    <group>
+      <QuadraticBezierLine
+        start={curve.v0}
+        end={curve.v2}
+        mid={curve.v1}
+        color={arcColor}
+        lineWidth={2.5}
+        transparent
+        opacity={0.88}
+      />
+      <mesh ref={pulseRef}>
+        <sphereGeometry args={[0.16, 12, 12]} />
+        <meshBasicMaterial color="#ffffff" />
+      </mesh>
+    </group>
+  )
 }
 
-function NetworkScene({ scene, block, selected, onSelect, topDown, reset, energy, feeders, focus }: CityProps & { topDown: boolean; reset: number; energy: boolean; feeders: boolean; focus: boolean }) {
-  const palette = useMemo(paletteFromCss, [])
+// Streetlight fixtures
+function StreetLight({ position }: { position: Point }) {
+  const [x, y, z] = position
+  return (
+    <group position={[x, y, z]}>
+      <mesh position={[0, 1.25, 0]}>
+        <cylinderGeometry args={[0.04, 0.06, 2.5, 8]} />
+        <meshStandardMaterial color="#475569" metalness={0.7} roughness={0.3} />
+      </mesh>
+      <mesh position={[0.22, 2.45, 0]} rotation={[0, 0, -0.4]}>
+        <cylinderGeometry args={[0.03, 0.03, 0.52, 8]} />
+        <meshStandardMaterial color="#475569" metalness={0.7} />
+      </mesh>
+      <mesh position={[0.42, 2.5, 0]}>
+        <boxGeometry args={[0.24, 0.08, 0.13]} />
+        <meshStandardMaterial color="#1e293b" />
+      </mesh>
+      <mesh position={[0.42, 2.45, 0]}>
+        <boxGeometry args={[0.2, 0.03, 0.1]} />
+        <meshBasicMaterial color="#ffeedd" />
+      </mesh>
+      <pointLight position={[0.42, 2.25, 0]} color="#ffcc66" intensity={1.3} distance={7} decay={2} />
+    </group>
+  )
+}
+
+// Camera Traversal Controller (Orbit / Top-Down / Perspective)
+function CameraRig({
+  mode,
+  selectedFocus,
+}: {
+  mode: CameraMode
+  selectedFocus: Point | null
+}) {
+  const controlsRef = useRef<any>(null)
+  const { camera } = useThree()
+
+  useEffect(() => {
+    if (!controlsRef.current) return
+
+    if (mode === 'top-down') {
+      camera.position.set(0, 52, 0.01)
+      controlsRef.current.target.set(0, 0, 0)
+      controlsRef.current.maxPolarAngle = 0.05
+      controlsRef.current.minPolarAngle = 0
+      controlsRef.current.enableRotate = false
+    } else if (mode === 'perspective') {
+      camera.position.set(16, 9, 24)
+      controlsRef.current.target.set(0, 1.2, 0)
+      controlsRef.current.maxPolarAngle = Math.PI / 2 - 0.05
+      controlsRef.current.minPolarAngle = 0.2
+      controlsRef.current.enableRotate = true
+    } else {
+      if (selectedFocus) {
+        camera.position.set(selectedFocus[0] + 12, 14, selectedFocus[2] + 14)
+        controlsRef.current.target.set(selectedFocus[0], 0.8, selectedFocus[2])
+      } else {
+        camera.position.set(22, 24, 26)
+        controlsRef.current.target.set(0, 0, 0)
+      }
+      controlsRef.current.maxPolarAngle = 1.35
+      controlsRef.current.minPolarAngle = 0.1
+      controlsRef.current.enableRotate = true
+    }
+    controlsRef.current.update()
+  }, [mode, selectedFocus, camera])
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      makeDefault
+      enableDamping
+      dampingFactor={0.06}
+      minDistance={6}
+      maxDistance={85}
+      enablePan={true}
+    />
+  )
+}
+
+// Main 3D World Scene
+function CityScene({
+  scene,
+  block,
+  selected,
+  onSelect,
+  cameraMode,
+}: CityProps & { cameraMode: CameraMode }) {
   const layout = useMemo(() => cityLayout(scene), [scene])
-  const batches = useMemo(() => buildArchitecture(scene, layout, palette), [scene, layout, palette])
-  const [reducedMotion, setReducedMotion] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
-  useEffect(() => { const query = matchMedia('(prefers-reduced-motion: reduce)'); const change = () => setReducedMotion(query.matches); query.addEventListener('change', change); return () => query.removeEventListener('change', change) }, [])
-  const largestTrades = useMemo(() => [...(block?.trades ?? [])].sort((a, b) => b.kwh - a.kwh).slice(0, 12), [block])
-  const selectedPosition = selected ? layout.houses[selected] : null
-  return <>
-    <CameraRig width={layout.width} depth={layout.depth} topDown={topDown} reset={reset} focus={focus && selectedPosition ? selectedPosition : null} />
-    <color attach="background" args={[palette.ground]} />
-    <hemisphereLight args={[palette.raised, palette.leaf, 1.1]} />
-    <directionalLight position={[-12, 25, 8]} intensity={3} color={palette.stripe} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-30} shadow-camera-right={30} shadow-camera-top={30} shadow-camera-bottom={-30} shadow-normalBias={.025} shadow-bias={-.0002} shadow-radius={3} />
-    <directionalLight position={[15, 8, -14]} intensity={.8} color={palette.raised} />
-    <mesh position={[0, -.58, 0]} receiveShadow><boxGeometry args={[layout.width, 1, layout.depth]} /><meshStandardMaterial color={palette.metal} roughness={.85} /></mesh>
-    <mesh position={[0, -.11, 0]} receiveShadow><boxGeometry args={[layout.width + .12, .15, layout.depth + .12]} /><meshStandardMaterial color={palette.roof} /></mesh>
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.015, 0]} receiveShadow><planeGeometry args={[layout.width - .1, layout.depth - .1]} /><meshStandardMaterial color={palette.lawn} /></mesh>
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.62, 0]} receiveShadow><planeGeometry args={[200, 200]} /><shadowMaterial transparent opacity={.14} /></mesh>
-    {batches.map(batch => <ArchitectureBatch key={`${batch.shape}-${batch.color}`} batch={batch} onSelect={onSelect} />)}
-    <EnergyPads scene={scene} block={block} layout={layout} palette={palette} />
-    {feeders && scene.houses.map(house => {
-      const from = layout.transformers[house.transformer], to = layout.houses[house.id]
-      return <Line key={`wire-${house.id}`} points={[[from[0], .18, from[2]], [from[0], .18, to[2] - 1.3], [to[0], .18, to[2] - 1.3], [to[0], .18, to[2]]]} color={palette.import} lineWidth={1} transparent opacity={.5} />
-    })}
-    {scene.transformers.map(transformer => <Transformer3D key={transformer.id} id={transformer.id} position={layout.transformers[transformer.id]} reading={block?.transformers[transformer.id]} palette={palette} />)}
-    {selectedPosition && <group position={selectedPosition}><mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .2, 0]}><ringGeometry args={[1.1, 1.18, 48]} /><meshBasicMaterial color={palette.import} /></mesh><Html position={[0, 3.7, 0]} center zIndexRange={[3, 0]} style={{ pointerEvents: 'none' }}><div className="selected-map-label">{selected}</div></Html></group>}
-    {energy && largestTrades.map((trade, index) => {
-      const from = layout.houses[trade.from], to = layout.houses[trade.to]
-      if (!from || !to) return null
-      const sourceHouse = scene.houses.find(h => h.id === trade.from)!, targetHouse = scene.houses.find(h => h.id === trade.to)!
-      return <TradePulse key={`${trade.from}-${trade.to}-${index}`} trade={trade} source={[from[0], buildingHeight(sourceHouse) + .6, from[2]]} target={[to[0], buildingHeight(targetHouse) + .6, to[2]]} palette={palette} index={index} reducedMotion={reducedMotion} />
-    })}
-  </>
+  const batches = useMemo(() => buildDetailedArchitecture(scene, layout), [scene, layout])
+  const selectedPoint = selected ? layout.houses[selected] : null
+
+  const activeTrades = useMemo(() => {
+    return (block?.trades ?? []).slice(0, 16)
+  }, [block])
+
+  const streetlights = useMemo(() => {
+    const list: Point[] = []
+    const xs = [-6.2, 0, 6.2]
+    const zs = [-8.5, -2, 4.5, 10.5]
+    for (const x of xs) {
+      for (const z of zs) {
+        list.push([x + 1.2, 0, z])
+      }
+    }
+    return list
+  }, [])
+
+  return (
+    <>
+      <CameraRig mode={cameraMode} selectedFocus={selectedPoint} />
+
+      {/* Luminous Twilight Atmosphere */}
+      <color attach="background" args={[NIGHT_PALETTE.background]} />
+      <fog attach="fog" args={[NIGHT_PALETTE.background, 55, 145]} />
+
+      {/* Sky/Ground Hemisphere illumination ensures buildings and ground are clearly visible */}
+      <hemisphereLight args={['#8ea9d4', '#263b32', 2.2]} />
+      <ambientLight color="#4b6282" intensity={1.2} />
+
+      {/* Crisp Directional Moonlight */}
+      <directionalLight
+        position={[-22, 40, -18]}
+        intensity={2.8}
+        color="#e2efff"
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-35}
+        shadow-camera-right={35}
+        shadow-camera-top={35}
+        shadow-camera-bottom={-35}
+        shadow-bias={-0.0004}
+      />
+      {/* Warm Golden Urban Glow & Rim Light */}
+      <directionalLight position={[28, 24, 28]} intensity={1.3} color="#fed7aa" />
+
+      {/* Ground plane (Surrounding dark terrain) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.06, 0]} receiveShadow>
+        <planeGeometry args={[160, 160]} />
+        <meshStandardMaterial color={NIGHT_PALETTE.ground} roughness={0.9} />
+      </mesh>
+
+      {/* Neighborhood base plate (Clean elevated urban podium) */}
+      <mesh position={[0, -0.15, 0]} receiveShadow>
+        <boxGeometry args={[layout.width + 4, 0.25, layout.depth + 4]} />
+        <meshStandardMaterial color={NIGHT_PALETTE.baseplate} roughness={0.8} />
+      </mesh>
+
+      {/* DISCOM / High-Voltage Substation */}
+      <TransmissionTower position={layout.discom} />
+
+      {/* Feeder line from DISCOM to Central Transformer DT-3 */}
+      {scene.transformers[0] && (
+        <Line
+          points={[
+            [layout.discom[0] + 1.0, 4.4, layout.discom[2]],
+            [
+              (layout.discom[0] + layout.transformers[scene.transformers[0].id][0]) / 2,
+              5.6,
+              (layout.discom[2] + layout.transformers[scene.transformers[0].id][2]) / 2,
+            ],
+            [
+              layout.transformers[scene.transformers[0].id][0],
+              1.8,
+              layout.transformers[scene.transformers[0].id][2],
+            ],
+          ]}
+          color="#38bdf8"
+          lineWidth={1.5}
+          transparent
+          opacity={0.65}
+        />
+      )}
+
+      {/* Detailed Batched Architecture (Balconies, Windows, Parapets, Rooftop Arrays, EV Hubs, Roads) */}
+      {batches.map((batch) => (
+        <ArchitectureBatch key={batch.key} batch={batch} onSelect={onSelect} />
+      ))}
+
+      {/* Active Energy Pads on the ground for houses & batteries */}
+      <EnergyPads scene={scene} block={block} layout={layout} />
+
+      {/* Central Transformers */}
+      {scene.transformers.map((transformer) => (
+        <CentralTransformer
+          key={transformer.id}
+          id={transformer.id}
+          position={layout.transformers[transformer.id]}
+          reading={block?.transformers[transformer.id]}
+        />
+      ))}
+
+      {/* Streetlights */}
+      {streetlights.map((pos, i) => (
+        <StreetLight key={i} position={pos} />
+      ))}
+
+      {/* Selection indicator & label */}
+      {selectedPoint && (
+        <group position={selectedPoint}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.22, 0]}>
+            <ringGeometry args={[1.55, 1.72, 48]} />
+            <meshBasicMaterial color="#00f0ff" />
+          </mesh>
+          <Html position={[0, 3.8, 0]} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
+            <div className="hud-3d-tag tag-house-selected">
+              <strong>{selected}</strong>
+              <span>{block?.houses[selected!] ? `${Math.abs(block.houses[selected!].net_kwh).toFixed(1)} kWh` : 'Active'}</span>
+            </div>
+          </Html>
+        </group>
+      )}
+
+      {/* Golden Glowing Energy Arcs */}
+      {activeTrades.map((trade, index) => {
+        const fromPos = layout.houses[trade.from]
+        const toPos = layout.houses[trade.to]
+        if (!fromPos || !toPos) return null
+
+        const sourceHouse = scene.houses.find((h) => h.id === trade.from)!
+        const targetHouse = scene.houses.find((h) => h.id === trade.to)!
+
+        const sourceCoord: Point = [
+          fromPos[0],
+          buildingHeight(sourceHouse) + 0.6,
+          fromPos[2],
+        ]
+        const targetCoord: Point = [
+          toPos[0],
+          buildingHeight(targetHouse) + 0.6,
+          toPos[2],
+        ]
+
+        return (
+          <GlowingEnergyArc
+            key={`${trade.from}-${trade.to}-${index}`}
+            source={sourceCoord}
+            target={targetCoord}
+            trade={trade}
+            index={index}
+          />
+        )
+      })}
+    </>
+  )
 }
 
 export function City3D(props: CityProps) {
-  const [topDown, setTopDown] = useState(false), [reset, setReset] = useState(0)
-  const [energy, setEnergy] = useState(true), [feeders, setFeeders] = useState(false), [focus, setFocus] = useState(false)
-  return <>
-    <div className="scene-toolbar" role="group" aria-label="Camera controls">{props.selected && <button aria-pressed={focus} onClick={() => setFocus(value => !value)}>Focus home</button>}<button aria-pressed={!topDown} onClick={() => setTopDown(false)}>Perspective</button><button aria-pressed={topDown} onClick={() => setTopDown(true)}>Top view</button><button onClick={() => { setReset(value => value + 1); setFocus(false) }} aria-label="Reset camera view" title="Reset camera view">↺</button></div>
-    <Canvas className="city-canvas" orthographic shadows dpr={[1, 1.75]} camera={{ position: [28, 34, 32], zoom: 12, near: .1, far: 200 }} gl={{ antialias: true, powerPreference: 'high-performance' }} onPointerMissed={() => props.onSelect(null)}>
-      <NetworkScene {...props} topDown={topDown} reset={reset} energy={energy} feeders={feeders} focus={focus} />
-    </Canvas>
-    <div className="scene-layers" role="group" aria-label="Network layers"><button aria-pressed={energy} onClick={() => setEnergy(value => !value)}><i className="energy-layer-dot" />Energy flows</button><button aria-pressed={feeders} onClick={() => setFeeders(value => !value)}><i />Feeder lines</button></div>
-  </>
+  const [internalCameraMode, setInternalCameraMode] = useState<CameraMode>('orbit')
+  const cameraMode = props.cameraMode ?? internalCameraMode
+
+  return (
+    <div className="city-canvas-container">
+      <Canvas
+        className="city-canvas"
+        shadows
+        camera={{ position: [24, 24, 26], fov: 42, near: 0.1, far: 300 }}
+        gl={{ antialias: true, powerPreference: 'high-performance' }}
+        onPointerMissed={() => props.onSelect(null)}
+      >
+        <CityScene {...props} cameraMode={cameraMode} />
+      </Canvas>
+    </div>
+  )
 }
