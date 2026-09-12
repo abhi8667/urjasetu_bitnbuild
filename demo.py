@@ -34,9 +34,11 @@ def main() -> int:
                     help="run without C's grid agents, to compare")
     ap.add_argument("--summary", default="run_summary.json",
                     help="where to write the run summary (PRD §10)")
+    ap.add_argument("--ai", action="store_true",
+                    help="enable the Groq trading strategy agent (needs GROQ_API_KEY)")
     args = ap.parse_args()
 
-    config = replace(DEFAULT, derate_factor=args.derate)
+    config = replace(DEFAULT, derate_factor=args.derate, llm_enabled=args.ai)
     blocks = args.days * config.blocks_per_day
 
     counts = Counter()
@@ -52,7 +54,13 @@ def main() -> int:
 
     feed = WhitefieldFeed(config)
     houses, transformers = feed.houses(), feed.transformers()
-    pool = AgentPool(houses, config)
+    from engine.agents.ai_trading import AITradingStrategyAgent
+    from engine.agents.grid_risk import GridFailureRiskAgent
+    risk_agent = None
+    if config.risk_enabled:
+        risk_agent = GridFailureRiskAgent(transformers, houses, config).fit(feed)
+    strategy_agent = AITradingStrategyAgent(config) if args.ai else None
+    pool = AgentPool(houses, config, strategy_agent=strategy_agent)
     settle = SettlementAgent(houses, config, consumers=pool.consumers, feed=feed)
 
     grid_kwargs, health = {}, None
@@ -67,7 +75,7 @@ def main() -> int:
         )
 
     runner = Runner(feed, pool, config, bus=CountingBus(), settlement=settle,
-                    **grid_kwargs)
+                    risk_agent=risk_agent, **grid_kwargs)
     started = time.perf_counter()
     summary = runner.run(blocks=blocks)
     wall = time.perf_counter() - started
@@ -92,6 +100,10 @@ def main() -> int:
           f"({100 * lost / sold if sold else 0:.1f}%)")
     print(f"    mean clearing price  {summary['mean_clearing_price_inr'] or 0:>10.2f} INR/kWh")
     print(f"    P2P share of demand  {summary['p2p_share_of_demand_pct']:>10.2f} %")
+    if risk_agent is not None:
+        print(f"    high-risk forecasts  {summary['high_risk_predictions']:>10,}")
+    if args.ai:
+        print(f"    Groq model used      {(strategy_agent.last_model or 'safe fallback'):>10}")
 
     if not args.no_protection:
         print("\n  GRID PROTECTION")

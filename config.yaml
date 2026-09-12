@@ -30,6 +30,12 @@ gst_pct: 5.0
 include_ev_hubs_as_houses: true
 lightgbm_enabled: false
 llm_enabled: false
+groq_primary_model: qwen/qwen3.8-27b
+groq_fallback_model: qwen/qwen3.6-27b
+groq_timeout_seconds: 8.0
+risk_enabled: true
+risk_horizon_blocks: 3
+risk_training_days: 14
 loading_limit: 1.0
 max_ageing_adder: 2.0
 max_bid_kwh_per_block: 3.0

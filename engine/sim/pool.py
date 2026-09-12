@@ -11,20 +11,44 @@ from __future__ import annotations
 from engine.agents.consumer import ConsumerAgent
 from engine.agents.prosumer import ProsumerAgent
 from engine.config import Config
-from engine.domain import BillLine, House, MeterTick, Order, StrategyParams, Trade
+from engine.domain import (BillLine, GridRiskPrediction, House, MeterTick, Order,
+                           StrategyParams, Trade)
 
 
 class AgentPool:
     def __init__(self, houses: list[House], config: Config, rng=None,
-                 strategy: StrategyParams | None = None):
+                 strategy: StrategyParams | None = None, strategy_agent=None):
         self.config = config
+        self.strategy = strategy or StrategyParams()
+        self.strategy_agent = strategy_agent
+        self._last_strategy_day: int | None = None
+        self.price_history: list[float] = []
         ordered = sorted(houses, key=lambda h: h.house_id)
-        self.prosumers = {h.house_id: ProsumerAgent(h, config, rng, strategy)
+        self.prosumers = {h.house_id: ProsumerAgent(h, config, rng, self.strategy)
                           for h in ordered if h.has_pv}
-        self.consumers = {h.house_id: ConsumerAgent(h, config, rng, strategy)
+        self.consumers = {h.house_id: ConsumerAgent(h, config, rng, self.strategy)
                           for h in ordered}
         #: house_id -> kWh the last build() held back to charge a battery.
         self.battery_reserves: dict[str, float] = {}
+
+    def prepare_strategy(self, block: int, ticks: list[MeterTick],
+                         risk: list[GridRiskPrediction]) -> bool:
+        """Ask the AI once per day, then fan its decision to every trader."""
+        day = block // self.config.blocks_per_day
+        if self.strategy_agent is None or self._last_strategy_day == day:
+            return False
+        ambient = [t.ambient_c for t in ticks]
+        weather = {
+            "day": day,
+            "hour": block % self.config.blocks_per_day,
+            "ambient_c": round(sum(ambient) / len(ambient), 2) if ambient else None,
+        }
+        self.strategy = self.strategy_agent.decide(
+            weather, self.price_history, risk, self.strategy)
+        for agent in list(self.prosumers.values()) + list(self.consumers.values()):
+            agent.strategy = self.strategy
+        self._last_strategy_day = day
+        return True
 
     def build(self, block: int, ticks: list[MeterTick], feed=None) -> list[Order]:
         orders: list[Order] = []
@@ -55,3 +79,5 @@ class AgentPool:
             prosumer.on_settled(block, [by_house[house_id]], trades, clearing_price)
         for house_id, consumer in self.consumers.items():
             consumer.on_settled(block, [by_house[house_id]], bill_lines)
+        if clearing_price is not None:
+            self.price_history.append(clearing_price)

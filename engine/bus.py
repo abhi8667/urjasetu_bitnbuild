@@ -28,6 +28,8 @@ TOPICS = (
     "ageing_applied",
     "battery_moved",
     "delivery_shortfall",
+    "grid_risk_predicted",
+    "ai_strategy_updated",
     "block_settled",
 )
 

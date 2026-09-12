@@ -123,6 +123,12 @@ class Config:
     # -- optional layers ---------------------------------------------------
     lightgbm_enabled: bool = False
     llm_enabled: bool = False
+    groq_primary_model: str = "qwen/qwen3.8-27b"
+    groq_fallback_model: str = "qwen/qwen3.6-27b"
+    groq_timeout_seconds: float = 8.0
+    risk_enabled: bool = True
+    risk_horizon_blocks: int = 3
+    risk_training_days: int = 14
 
     # -- feed --------------------------------------------------------------
     data_dir: Path = DATA_DIR
@@ -213,6 +219,12 @@ def _validate(config: "Config") -> None:
             f"'one_for_one' or 'feed_in'")
     if not config.rating_kva:
         problems.append("rating_kva is empty — no transformer would be rated")
+    if config.groq_timeout_seconds <= 0:
+        problems.append("groq_timeout_seconds must be positive")
+    if config.risk_horizon_blocks <= 0:
+        problems.append("risk_horizon_blocks must be positive")
+    if config.risk_training_days <= 0:
+        problems.append("risk_training_days must be positive")
     if problems:
         raise ValueError("invalid configuration: " + "; ".join(problems))
 

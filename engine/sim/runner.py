@@ -59,7 +59,8 @@ class Runner:
                  sentinel: Sentinel | None = None, flow: Flow | None = None,
                  health: Health | None = None, settlement: Settlement | None = None,
                  batteries: Any = None, persist=None, start_block: int = 0,
-                 include_baseline: bool = True, validate_feed: bool = True):
+                 include_baseline: bool = True, validate_feed: bool = True,
+                 risk_agent=None):
         self.feed = feed
         self.orders = orders
         self.config = config
@@ -71,6 +72,7 @@ class Runner:
         self.settlement = settlement
         self.batteries = batteries
         self.persist = persist
+        self.risk_agent = risk_agent
         # Resume support (PS1): a run that died at block N restarts here.
         self.start_block = start_block
         self.include_baseline = include_baseline
@@ -169,6 +171,30 @@ class Runner:
         })
 
         ticks = self.feed.ticks(block)
+        risk_predictions = (self.risk_agent.predict(block, ticks)
+                            if self.risk_agent is not None else [])
+        for prediction in risk_predictions:
+            summary.record_risk(prediction)
+            self.bus.publish("grid_risk_predicted", block, "grid-risk", {
+                "transformer_id": prediction.transformer_id,
+                "horizon_blocks": prediction.horizon_blocks,
+                "risk_score": prediction.risk_score,
+                "predicted_peak_loading": prediction.predicted_peak_loading,
+                "likely_breach": prediction.likely_breach,
+            })
+        if hasattr(self.orders, "prepare_strategy"):
+            changed = self.orders.prepare_strategy(block, ticks, risk_predictions)
+            if changed:
+                strategy = self.orders.strategy
+                strategy_agent = getattr(self.orders, "strategy_agent", None)
+                self.bus.publish("ai_strategy_updated", block, "ai-trading", {
+                    "discount": strategy.discount,
+                    "margin": strategy.margin,
+                    "model": getattr(strategy_agent, "last_model", None),
+                    "fallback_used": bool(
+                        getattr(strategy_agent, "last_model", None) ==
+                        self.config.groq_fallback_model),
+                })
         orders = _build_orders(self.orders, block, ticks, self.feed)
         for order in orders:
             self.bus.publish("order_submitted", block, order.house_id, {
@@ -406,9 +432,19 @@ class _Accumulator:
         self.battery_charged_kwh = 0.0
         self.battery_discharged_kwh = 0.0
         self.delivery_shortfall_kwh = 0.0
+        self.risk_predictions = 0
+        self.high_risk_predictions = 0
+        self.max_risk_by_transformer: dict[str, float] = {}
 
     def record_breach(self, kind: str) -> None:
         self.breaches_by_kind[kind] = self.breaches_by_kind.get(kind, 0) + 1
+
+    def record_risk(self, prediction) -> None:
+        self.risk_predictions += 1
+        self.high_risk_predictions += int(prediction.likely_breach)
+        old = self.max_risk_by_transformer.get(prediction.transformer_id, 0.0)
+        self.max_risk_by_transformer[prediction.transformer_id] = max(
+            old, prediction.risk_score)
 
     def record(self, block, ticks, orders, result, passes) -> None:
         self.blocks += 1
@@ -453,6 +489,11 @@ class _Accumulator:
             "battery_charged_kwh": round(self.battery_charged_kwh, 6),
             "battery_discharged_kwh": round(self.battery_discharged_kwh, 6),
             "delivery_shortfall_kwh": round(self.delivery_shortfall_kwh, 6),
+            "risk_predictions": self.risk_predictions,
+            "high_risk_predictions": self.high_risk_predictions,
+            "max_risk_by_transformer": {
+                k: round(v, 4) for k, v in sorted(
+                    self.max_risk_by_transformer.items())},
             "mean_clearing_price_inr": round(
                 sum(self.prices) / len(self.prices), 4) if self.prices else None,
             "seed": config.seed,

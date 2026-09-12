@@ -211,6 +211,17 @@ class StrategyParams:
 
 
 @dataclass(frozen=True)
+class GridRiskPrediction:
+    """A learned, forward-looking overload estimate for one transformer."""
+    transformer_id: str
+    block: int
+    horizon_blocks: int
+    risk_score: float
+    predicted_peak_loading: float
+    likely_breach: bool
+
+
+@dataclass(frozen=True)
 class Site:
     """Static presentation and settlement metadata that sits beside a House.
 
