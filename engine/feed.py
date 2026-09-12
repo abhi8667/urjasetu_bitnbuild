@@ -29,6 +29,16 @@ from engine.config import Config, DEFAULT
 from engine.domain import House, MeterTick, Site, Transformer, TransformerSite
 
 BASE_DAY = date(2025, 9, 12)   # the one measured day in telemetry/
+
+
+class FeedValidationError(ValueError):
+    """The meter feed cannot support a complete run.
+
+    PRD §12: raise at startup during feed validation, never mid-run. A gap
+    discovered at block 400 has already cost four hundred blocks of compute and
+    leaves a half-written database; the same gap found before block 0 costs a
+    second and a clear message.
+    """
 PHASES = ("A", "B", "C")
 
 
@@ -189,6 +199,96 @@ class WhitefieldFeed:
 
     def total_blocks(self) -> int:
         return self.config.blocks_per_day * self.config.days
+
+    # ---------------------------------------------------------- validation
+
+    def validate(self, sample_blocks: int | None = None) -> dict:
+        """Check the whole feed can support a complete run. Raises on the first
+        problem found, with enough detail to fix it.
+
+        "A run that starts must be able to finish" (PRD §12). Everything here is
+        a property that would otherwise surface as a KeyError, a silent zero, or
+        a physically impossible number somewhere in the middle of a 720-block
+        run — at which point the cause is many blocks behind the symptom.
+
+        Returns a summary of what it checked, so a caller can log that the feed
+        was actually verified rather than assumed.
+        """
+        houses = self.houses()
+        transformers = self.transformers()
+        total = self.total_blocks()
+
+        if total <= 0:
+            raise FeedValidationError(
+                f"feed covers {total} blocks; nothing could run")
+        if not houses:
+            raise FeedValidationError("feed has no premises")
+        if not transformers:
+            raise FeedValidationError("feed has no transformers")
+
+        known_transformers = {t.transformer_id for t in transformers}
+        for house in houses:
+            if house.transformer_id not in known_transformers:
+                raise FeedValidationError(
+                    f"premises {house.house_id} is on transformer "
+                    f"{house.transformer_id}, which the feed does not define "
+                    f"(known: {sorted(known_transformers)})")
+            if house.has_pv != (house.pv_kw > 0):
+                raise FeedValidationError(
+                    f"premises {house.house_id} has_pv={house.has_pv} but "
+                    f"pv_kw={house.pv_kw}")
+            if house.has_battery != (house.battery_kwh > 0):
+                raise FeedValidationError(
+                    f"premises {house.house_id} has_battery={house.has_battery} "
+                    f"but battery_kwh={house.battery_kwh}")
+            if house.retail_tariff <= 0:
+                raise FeedValidationError(
+                    f"premises {house.house_id} has no retail tariff")
+
+        expected = {h.house_id for h in houses}
+        blocks = range(total) if sample_blocks is None else range(
+            0, total, max(1, total // sample_blocks))
+
+        checked = 0
+        for block in blocks:
+            ticks = self.ticks(block)
+            seen = {t.house_id for t in ticks}
+            missing = expected - seen
+            if missing:
+                raise FeedValidationError(
+                    f"block {block} is missing {len(missing)} premises "
+                    f"(first few: {sorted(missing)[:5]}). A gap here would "
+                    f"surface mid-run as a KeyError.")
+            extra = seen - expected
+            if extra:
+                raise FeedValidationError(
+                    f"block {block} has readings for premises the registry does "
+                    f"not know: {sorted(extra)[:5]}")
+            for tick in ticks:
+                for name, value in (("load_kwh", tick.load_kwh),
+                                    ("gen_kwh", tick.gen_kwh),
+                                    ("ambient_c", tick.ambient_c)):
+                    if value != value:                      # NaN
+                        raise FeedValidationError(
+                            f"block {block}, premises {tick.house_id}: "
+                            f"{name} is NaN")
+                if tick.load_kwh < 0 or tick.gen_kwh < 0:
+                    raise FeedValidationError(
+                        f"block {block}, premises {tick.house_id}: negative "
+                        f"energy (load {tick.load_kwh}, gen {tick.gen_kwh})")
+                if not -50 <= tick.ambient_c <= 70:
+                    raise FeedValidationError(
+                        f"block {block}, premises {tick.house_id}: ambient "
+                        f"{tick.ambient_c} C is outside any plausible range")
+            checked += 1
+
+        return {
+            "blocks_checked": checked,
+            "blocks_total": total,
+            "premises": len(houses),
+            "transformers": len(transformers),
+            "complete": sample_blocks is None,
+        }
 
     # -------------------------------------------------------- construction
 
