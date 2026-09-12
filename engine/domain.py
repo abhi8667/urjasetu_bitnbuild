@@ -98,11 +98,19 @@ class BillLine:
     storage_fee_inr: float
     ageing_inr: float
     net_inr: float
+    # `platform_fee` and `gst_pct` were declared in Config, documented in the
+    # settlement docstring as two of "six components, every one a config value",
+    # and then never billed: there was no column for either and no code path
+    # that read them. Eight components now, and `components` below is what ST2
+    # sums, so a charge that is not in this tuple cannot reach `net_inr`.
+    platform_inr: float = 0.0
+    gst_inr: float = 0.0
 
     @property
     def components(self) -> tuple[float, ...]:
         return (self.energy_inr, self.transaction_inr, self.wheeling_inr,
-                self.cross_subsidy_inr, self.storage_fee_inr, self.ageing_inr)
+                self.cross_subsidy_inr, self.storage_fee_inr, self.ageing_inr,
+                self.platform_inr, self.gst_inr)
 
 
 @dataclass(frozen=True)
@@ -155,6 +163,14 @@ class ReshapePlan:
     new_claims: list[StorageClaim]
     feasible: bool
     objective_value: float
+    # The LP's decision as TRADES, preserving which seller matched which buyer.
+    # `constrained_orders` is the same decision as an order book, and exists only
+    # so the market agent can re-assert MK1/MK2 over it. Re-clearing the orders
+    # through the auction discarded the pairing — a uniform-price auction sorts
+    # by price and walks, and every pair carries the same price — so the LP's
+    # per-trade allocation, which is what satisfies the loading and voltage
+    # rows, never reached the grid. Read this field, not that one.
+    constrained_trades: list[Trade] = field(default_factory=list)
     # kWh actually discharged, >= 0. Absorption relieves an export-driven
     # overload; discharge relieves an import-driven one, which is the only kind
     # this street has — every loading breach lands in 18:00-21:00.
@@ -175,16 +191,35 @@ class AgeingResult:
     """Returned by C's TransformerHealthAgent.apply() for one block.
 
     There is exactly one of these, here, so that B and C cannot drift apart:
-    `grid/health.py` imports it rather than defining its own. C constructs it
-    from `states` and `adders`; B reads the dict views below. `adders` is
-    already lagged by one block (HL4) — settlement must not lag it again.
+    `grid/health.py` imports it rather than defining its own.
+
+    TWO adder dicts, and the distinction is HL4 itself:
+
+      `adders`        computed from THIS block's thermal state, to be applied in
+                      block t+1. This is what the health agent's own pipeline
+                      carries forward, and what C's HL4 test reads.
+      `active_adders` computed in block t-1, in force for THIS block. This is
+                      the one settlement must bill at.
+
+    Settlement used to read `adders` (via the `ageing_adder` view, which pointed
+    at it), which billed this block's trades with a price signal derived from
+    this block's own load — retroactive, and exactly what HL4 forbids. The view
+    below now points at `active_adders`, so the default path is the correct one
+    and a caller has to ask for `adders` by name to get the forward figure.
     """
     states: list[TransformerState]
     adders: dict[str, float]          # transformer_id -> INR/kWh for block t+1
+    active_adders: dict[str, float] = field(default_factory=dict)
     block: int = 0
 
     @property
     def ageing_adder(self) -> dict[str, float]:
+        """The adder IN FORCE this block — computed in t-1. HL4."""
+        return dict(self.active_adders)
+
+    @property
+    def next_ageing_adder(self) -> dict[str, float]:
+        """The adder computed this block, in force from t+1."""
         return dict(self.adders)
 
     @property

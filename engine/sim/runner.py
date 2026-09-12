@@ -50,7 +50,11 @@ class Health(Protocol):
 
 
 class Settlement(Protocol):
-    def settle(self, trades: list[Trade], ageing) -> Any: ...
+    # Matches the call site. The runner passes `block` (so the agent can publish)
+    # and `claims` (so storage fees get billed); the protocol declared a
+    # two-argument method and quietly disagreed with the code below.
+    def settle(self, trades: list[Trade], ageing=None, block: int | None = None,
+               claims=None) -> Any: ...
 
 
 class Runner:
@@ -59,7 +63,8 @@ class Runner:
                  sentinel: Sentinel | None = None, flow: Flow | None = None,
                  health: Health | None = None, settlement: Settlement | None = None,
                  batteries: Any = None, persist=None, start_block: int = 0,
-                 include_baseline: bool = True, validate_feed: bool = True):
+                 include_baseline: bool = True, validate_feed: bool = True,
+                 on_block: Any = None):
         self.feed = feed
         self.orders = orders
         self.config = config
@@ -77,26 +82,61 @@ class Runner:
         # PRD §12: the engine validates the entire meter feed before block 0.
         # Off only for tests that deliberately drive a partial or stub feed.
         self.validate_feed = validate_feed
+        # Called once per block with a read-only snapshot of what that block did
+        # (see `_BlockView` at the foot of this file). This is how the server
+        # layer records a run for the UI without reaching into engine state —
+        # the same one-way rule `engine/bus.py` states for the ring buffer.
+        # Optional; None keeps the loop exactly as it was.
+        self.on_block = on_block
         self.feed_validation: dict | None = None
         self.summary: dict | None = None
         self.tick_durations_ms: list[float] = []
+        #: block -> transformer_id the predictor flagged for that block. Scored
+        #: against what actually breached, so the prediction is falsifiable
+        #: rather than decorative.
+        self._predictions: dict[int, str] = {}
+        self.prediction_hits = 0
+        self.prediction_misses = 0
 
-    def _charge_batteries(self, block: int) -> dict[str, float]:
+    def _charge_batteries(self, block: int) -> tuple[dict[str, float], dict[str, float]]:
+        """Store what the prosumers held back. Returns (drawn, stored).
+
+        The two are NOT the same number, and conflating them was inventing
+        energy. `store_own_energy` applies round-trip efficiency: hand it 1.0 kWh
+        and 0.90 kWh lands in the battery. The runner used to ignore the return
+        value and credit the prosumer — and the run summary — with the full
+        1.0 kWh, so the agents' belief about their own state of charge drifted
+        above what the BatteryBook actually held, by exactly the conversion loss,
+        and PR1 never caught it because PR1 checks the drifting number.
+
+          drawn   what leaves the premises' surplus. This is what the METER sees
+                  as additional load, so it is what the ticks must be adjusted by.
+          stored  what is in the battery afterwards, and therefore what the
+                  prosumer's SoC and the run summary must record.
+
+        drawn - stored is the conversion loss, reported separately so FL4 has
+        somewhere to put it instead of it vanishing.
+        """
         reserves = getattr(self.orders, "battery_reserves", None)
         if not reserves or self.batteries is None:
-            return {}
+            return {}, {}
+        drawn: dict[str, float] = {}
         stored: dict[str, float] = {}
         for house_id, kwh in sorted(reserves.items()):
             room = self.batteries.available_absorption_kwh(house_id)
             take = min(kwh, room)
             if take <= 1e-9:
                 continue
-            self.batteries.store_own_energy(house_id, take)
-            stored[house_id] = round(take, 6)
+            landed = self.batteries.store_own_energy(house_id, take)
+            if landed <= 1e-9:
+                continue
+            drawn[house_id] = round(take, 9)
+            stored[house_id] = round(landed, 9)
             prosumer = getattr(self.orders, "prosumers", {}).get(house_id)
             if prosumer is not None:
-                prosumer.on_settled(block, [], [], battery_delta_kwh=take)
-        return stored
+                # The kWh that actually landed, not the kWh handed over.
+                prosumer.on_settled(block, [], [], battery_delta_kwh=landed)
+        return drawn, stored
 
     # ------------------------------------------------------------------ loop
 
@@ -120,6 +160,17 @@ class Runner:
             self.config, total - self.start_block,
             settlement=self.settlement, health=self.health,
             baseline=self._baseline_figures(total))
+        # Scored, not asserted. A predictor that is never checked against what
+        # happened is decoration; one that reports its own hit rate can be
+        # argued with.
+        attempted = self.prediction_hits + self.prediction_misses
+        self.summary["breach_prediction"] = {
+            "predicted": attempted,
+            "hits": self.prediction_hits,
+            "misses": self.prediction_misses,
+            "precision_pct": round(100 * self.prediction_hits / attempted, 4)
+            if attempted else None,
+        }
         return self.summary
 
     def _baseline_figures(self, total: int) -> dict | None:
@@ -162,14 +213,94 @@ class Runner:
         ordered = sorted(self.tick_durations_ms)
         return ordered[len(ordered) // 2] if ordered else 0.0
 
+    def _maybe_set_daily_strategy(self, block: int) -> None:
+        if block % self.config.blocks_per_day != 0:
+            return
+        setter = getattr(self.orders, "set_strategy", None)
+        if setter is None:
+            return
+        from engine.algo import llm
+        if not llm.LLM_ENABLED:
+            return
+        previous = getattr(self.orders, "strategy", None)
+        ticks = self.feed.ticks(block)
+        weather = {
+            "ambient_c": round(ticks[0].ambient_c, 2) if ticks else None,
+            "day": block // self.config.blocks_per_day,
+            "street_generation_kwh": round(sum(t.gen_kwh for t in ticks), 3),
+            "street_load_kwh": round(sum(t.load_kwh for t in ticks), 3),
+        }
+        history = [round(p, 4) for p in getattr(self.orders, "price_history", [])[-48:]]
+        proposed = llm.daily_strategy(weather, history, previous)
+        if proposed == previous:
+            return
+        setter(proposed)
+        self.bus.publish("strategy_updated", block, "llm", {
+            "day": weather["day"],
+            "discount": proposed.discount,
+            "margin": proposed.margin,
+            "bid_aggression": proposed.bid_aggression,
+            # LM1: never the LLM's to move, so it is reported to prove it did not.
+            "battery_reserve_frac": proposed.battery_reserve_frac,
+        })
+
+    def _predict_next_block(self, block: int, trades: list[Trade]) -> None:
+        """Look one block ahead and say so if the iron is about to be in trouble.
+
+        The problem this system exists for asks agents to "predict grid
+        failures", and until now nothing did: `GridSentinel.check` is reactive by
+        construction — it evaluates the block that is already happening, after
+        the market has cleared it — and `TransformerHealthAgent.risk_rank`, the
+        one forward-looking thing in the codebase, had no caller at all.
+
+        So: take the feed's forecast for block+1 (agent belief, noise included,
+        NOT truth — this is a prediction and it is allowed to be wrong), run the
+        same sentinel over it, and publish. It is advisory. Nothing downstream
+        acts on it, and deliberately so: acting on a forecast would let a bad
+        forecast curtail real trades. It gives the UI a warning ahead of the
+        event and gives the record something to be scored against later.
+        """
+        if self.sentinel is None:
+            return
+        next_block = block + 1
+        if next_block >= self.feed.total_blocks():
+            return
+        try:
+            forecast_ticks = [self.feed.forecast(h.house_id, next_block, 1)[0]
+                              for h in self.feed.houses()]
+        except (IndexError, KeyError):
+            return
+        predicted = self.sentinel.check(trades, forecast_ticks)
+        if predicted is None:
+            return
+        ranked = self.health.risk_rank() if self.health is not None else []
+        self.bus.publish("breach_predicted", block, "sentinel", {
+            "for_block": next_block,
+            "transformer_id": predicted.transformer_id,
+            "kind": predicted.kind,
+            "severity": round(predicted.severity, 4),
+            # risk_rank() was dead code — defined, tested, never called.
+            "risk_rank": [[tid, round(score, 9)] for tid, score in ranked],
+        })
+        self._predictions[next_block] = predicted.transformer_id
+
     def _tick(self, block: int, summary: "_Accumulator") -> None:
         self.bus.publish("block_opened", block, AGENT_ID, {
             "hour": block % self.config.blocks_per_day,
             "day": block // self.config.blocks_per_day,
         })
 
-        ticks = self.feed.ticks(block)
-        orders = _build_orders(self.orders, block, ticks, self.feed)
+        # Once per simulated day, before anything trades: ask the LLM layer for
+        # a bidding posture. `algo.llm.daily_strategy` was written, tested and
+        # never called — the one place a language model belongs in this system
+        # had no call site at all. It is advisory and bounded: it may move four
+        # clamped numbers on the agents' strategy and nothing else, and with no
+        # key it returns the previous parameters unchanged, which is how the
+        # engine runs identically with the LLM off (PRD integration check 10).
+        self._maybe_set_daily_strategy(block)
+
+        raw_ticks = self.feed.ticks(block)
+        orders = _build_orders(self.orders, block, raw_ticks, self.feed)
         for order in orders:
             self.bus.publish("order_submitted", block, order.house_id, {
                 "order_id": order.order_id,
@@ -181,7 +312,15 @@ class Runner:
         # Charge policy, before the market sees the book: whatever the prosumers
         # held back is physically stored now, so the evening reshape has
         # something to discharge. Own-battery only — no claims, no custody.
-        stored_now = self._charge_batteries(block)
+        drawn_now, stored_now = self._charge_batteries(block)
+
+        # A battery charging is additional load at that premises, and the meters
+        # would read it. This adjustment did not exist: energy entered batteries
+        # while the sentinel and the health agent went on measuring a street
+        # where it never happened, and the seller's surplus was still available
+        # to sell even though it had just been put in a battery. `drawn_now`,
+        # not `stored_now` — what leaves the premises is what the meter sees.
+        ticks = _apply_charge(raw_ticks, drawn_now)
 
         result = self.market.clear(block, orders)
         settled_ticks = ticks
@@ -189,9 +328,24 @@ class Runner:
         passes = 1
         breach = self.sentinel.check(result.trades, ticks) if self.sentinel else None
 
+        # Forward-looking check, for the UI and for the record. The sentinel is
+        # otherwise purely reactive — it reports a breach in the block that is
+        # already happening — and "predict grid failures" needs a step that runs
+        # before the fact. This uses the feed's own forecast for block+1 and the
+        # trades just cleared, so it costs one extra sentinel evaluation.
+        self._predict_next_block(block, result.trades)
+
+        predicted_tid = self._predictions.pop(block, None)
+        if predicted_tid is not None:
+            if breach is not None and breach.transformer_id == predicted_tid:
+                self.prediction_hits += 1
+            else:
+                self.prediction_misses += 1
+
         if breach is not None:
             summary.record_breach(breach.kind)
             self.bus.publish("breach_detected", block, "sentinel", {
+                "predicted": predicted_tid == breach.transformer_id,
                 "transformer_id": breach.transformer_id,
                 "kind": breach.kind,
                 "severity": round(breach.severity, 4),
@@ -208,7 +362,17 @@ class Runner:
                     "objective_value": plan.objective_value,
                 })
                 if plan.feasible:
-                    result = self.market.clear(block, plan.constrained_orders)
+                    # `apply_reshape`, not `clear`. Re-clearing the constrained
+                    # orders through the auction threw away the LP's pairing —
+                    # every constrained pair carries the same price, and a
+                    # uniform-price auction sorts by price and walks, so seller
+                    # A's retained energy was rematched to whichever bid sorted
+                    # first. The LP's per-trade allocation IS the thing that
+                    # satisfies the loading and voltage rows it solved, so
+                    # discarding it meant the re-check below measured a street
+                    # the LP had never made feasible. MK1/MK2 still run.
+                    result = self.market.apply_reshape(
+                        block, plan.constrained_orders, plan.constrained_trades)
                     passes += 1
                     summary.reshapes_applied += 1
                     self.bus.publish("reshape_applied", block, "flow", {
@@ -216,6 +380,7 @@ class Runner:
                         "battery_charges": len(plan.battery_charges),
                         "battery_discharge_kwh": round(
                             sum(plan.battery_discharges.values()), 6),
+                        "claims_opened": len(plan.new_claims),
                     })
                 # A battery discharging behind the meter reduces that premises'
                 # net import, and absorbing raises it. The sentinel reads ticks,
@@ -243,12 +408,21 @@ class Runner:
         # market and discharging inside the reshape, so nothing downstream
         # could otherwise see both halves of the battery term.
         discharged_now = dict(getattr(plan, "battery_discharges", {}) or {}) if plan else {}
+        # `stored_now`, not `drawn_now`: the summary must agree with what the
+        # BatteryBook actually holds. Reporting the pre-efficiency figure here
+        # while reporting post-efficiency discharges made the run summary claim
+        # a net stored energy the batteries never contained.
         summary.battery_charged_kwh += sum(stored_now.values())
         summary.battery_discharged_kwh += sum(discharged_now.values())
+        summary.battery_conversion_loss_kwh += (
+            sum(drawn_now.values()) - sum(stored_now.values()))
         if stored_now or discharged_now:
             self.bus.publish("battery_moved", block, "runner", {
+                "drawn_kwh": {k: round(v, 9) for k, v in sorted(drawn_now.items())},
                 "charged_kwh": {k: round(v, 9) for k, v in sorted(stored_now.items())},
                 "discharged_kwh": {k: round(v, 9) for k, v in sorted(discharged_now.items())},
+                "conversion_loss_kwh": round(
+                    sum(drawn_now.values()) - sum(stored_now.values()), 9),
                 "net_into_batteries_kwh": round(
                     sum(stored_now.values()) - sum(discharged_now.values()), 9),
             })
@@ -266,8 +440,13 @@ class Runner:
         # exactly the "inventing kilowatt-hours" failure FL4 exists to catch.
         # The undeliverable share is trimmed; the seller simply earns less,
         # which is the natural economic consequence of a bad forecast.
+        # `ticks`, not `settled_ticks`. settled_ticks already has the discharge
+        # subtracted from load, which RAISES the computed surplus by exactly the
+        # discharge — and then `discharged_now` was added on top, counting the
+        # same kWh twice. `ticks` is charge-adjusted but pre-discharge, which is
+        # the state the "surplus plus what you discharged" sum is written for.
         result.trades[:], shortfalls = _reconcile_delivery(
-            result.trades, settled_ticks, discharged_now, self.config)
+            result.trades, ticks, discharged_now, self.config)
         summary.delivery_shortfall_kwh += sum(shortfalls.values())
         if shortfalls:
             self.bus.publish("delivery_shortfall", block, "runner", {
@@ -286,22 +465,43 @@ class Runner:
                 "ageing_adder": ageing.ageing_adder,
             })
 
-        bills = (self.settlement.settle(result.trades, ageing, block)
+        # Claims opened by this block's reshape go to settlement so the storage
+        # fee is actually paid. `plan.new_claims` used to be built, returned, and
+        # dropped on the floor here — the whole owner/custodian economic layer
+        # produced objects nobody ever settled.
+        new_claims = list(getattr(plan, "new_claims", []) or []) if plan else []
+        summary.claims_opened += len(new_claims)
+        bills = (self.settlement.settle(result.trades, ageing, block,
+                                        claims=new_claims)
                  if self.settlement else None)
 
         # Agents learn here and nowhere else (PR3). Fanning out after settlement
         # means their history includes this block's outcome, never this block's
         # own decision.
         if hasattr(self.orders, "on_settled"):
-            self.orders.on_settled(block, ticks, result.trades,
+            # raw_ticks: agents learn the street's underlying generation and
+            # load, which is what they forecast. Feeding them the battery- and
+            # reshape-adjusted ticks would teach every prosumer that its own
+            # storage decisions were weather.
+            self.orders.on_settled(block, raw_ticks, result.trades,
                                    result.clearing_price, bills or [])
 
         if self.persist is not None:
             # Accepts a Persistence instance or any callable with the same shape.
             writer = getattr(self.persist, "write_block", self.persist)
-            writer(block, ticks, orders, result.trades, bills, ageing)
+            writer(block, raw_ticks, orders, result.trades, bills, ageing)
 
-        summary.record(block, ticks, orders, result, passes)
+        summary.record(block, raw_ticks, orders, result, passes)
+        if self.on_block is not None:
+            self.on_block(_BlockView(
+                block=block, raw_ticks=raw_ticks, settled_ticks=settled_ticks,
+                orders=orders, trades=list(result.trades),
+                clearing_price=result.clearing_price, breach=breach,
+                predicted_transformer=predicted_tid, ageing=ageing,
+                bills=list(bills or []), passes=passes,
+                battery_drawn=drawn_now, battery_stored=stored_now,
+                battery_discharged=discharged_now, claims=new_claims,
+                shortfalls=shortfalls))
         self.bus.publish("block_settled", block, AGENT_ID, {
             "trades": len(result.trades),
             "clearing_price": result.clearing_price,
@@ -357,6 +557,29 @@ def _reconcile_delivery(trades: list[Trade], ticks: list[MeterTick],
     return out, shortfalls
 
 
+def _apply_charge(ticks: list[MeterTick], drawn: dict[str, float]) -> list[MeterTick]:
+    """Ticks as the meters would read them once batteries started charging.
+
+    Charging is additional consumption at that premises. Without this the energy
+    left the street's surplus and entered a battery while every downstream
+    reader — the sentinel, the health agent, the delivery reconciliation — went
+    on seeing the unmodified meter. The seller could then sell the very kWh it
+    had just stored.
+    """
+    if not drawn:
+        return ticks
+    out = []
+    for tick in ticks:
+        delta = drawn.get(tick.house_id, 0.0)
+        if delta == 0.0:
+            out.append(tick)
+            continue
+        out.append(MeterTick(block=tick.block, house_id=tick.house_id,
+                             load_kwh=round(tick.load_kwh + delta, 9),
+                             gen_kwh=tick.gen_kwh, ambient_c=tick.ambient_c))
+    return out
+
+
 def _apply_battery(ticks: list[MeterTick], plan, config) -> list[MeterTick]:
     """Ticks as the meters would read them after the reshape moved battery energy."""
     charge = getattr(plan, "battery_charges", None) or {}
@@ -405,7 +628,9 @@ class _Accumulator:
         self.fallbacks = 0
         self.battery_charged_kwh = 0.0
         self.battery_discharged_kwh = 0.0
+        self.battery_conversion_loss_kwh = 0.0
         self.delivery_shortfall_kwh = 0.0
+        self.claims_opened = 0
 
     def record_breach(self, kind: str) -> None:
         self.breaches_by_kind[kind] = self.breaches_by_kind.get(kind, 0) + 1
@@ -450,9 +675,14 @@ class _Accumulator:
             "breaches_total": sum(self.breaches_by_kind.values()),
             "reshapes_applied": self.reshapes_applied,
             "fallback_curtailments": self.fallbacks,
+            # Post-efficiency, so charged - discharged equals what the
+            # BatteryBook actually holds. The conversion loss is reported beside
+            # them rather than folded into either, so FL4 has all three terms.
             "battery_charged_kwh": round(self.battery_charged_kwh, 6),
             "battery_discharged_kwh": round(self.battery_discharged_kwh, 6),
+            "battery_conversion_loss_kwh": round(self.battery_conversion_loss_kwh, 6),
             "delivery_shortfall_kwh": round(self.delivery_shortfall_kwh, 6),
+            "storage_claims_opened": self.claims_opened,
             "mean_clearing_price_inr": round(
                 sum(self.prices) / len(self.prices), 4) if self.prices else None,
             "seed": config.seed,
@@ -470,6 +700,19 @@ class _Accumulator:
             summary["discom_charge_revenue_inr"] = round(
                 settlement.charges_collected, 6)
             summary["bill_lines"] = len(settlement.ledger)
+            summary["platform_fee_inr"] = round(
+                sum(l.platform_inr for l in settlement.ledger), 6)
+            summary["gst_inr"] = round(
+                sum(l.gst_inr for l in settlement.ledger), 6)
+            summary["storage_fees_paid_inr"] = round(
+                sum(l.storage_fee_inr for l in settlement.ledger
+                    if l.role == "owner"), 6)
+            # Nonzero means the charge stack is pressing against retail and the
+            # ageing signal is being held back to keep CN2 true. Visible on
+            # purpose: a cap that hides how often it fires is a cap you cannot
+            # reason about.
+            summary["ageing_adder_trimmed_inr"] = round(
+                getattr(settlement, "adder_trimmed_inr", 0.0), 6)
 
         if health is not None:
             life = getattr(health, "_cumulative_life_hours", {})
@@ -481,3 +724,41 @@ class _Accumulator:
             summary["baseline"] = baseline
 
         return summary
+
+
+# --------------------------------------------------------- block snapshot
+
+from dataclasses import dataclass as _dataclass, field as _field  # noqa: E402
+
+
+@_dataclass(frozen=True)
+class _BlockView:
+    """Everything one block did, handed to `Runner.on_block`.
+
+    Frozen, and every collection is already a copy, so a recorder cannot reach
+    back and change what the engine is doing. That is the same one-way rule the
+    bus ring buffer states: the UI reads what the engine published, and nothing
+    outside the engine writes engine state.
+
+    Both tick lists are here on purpose. `raw_ticks` is what the meters would
+    have read with no batteries and no reshaping — what the agents forecast
+    against. `settled_ticks` is what actually happened once charging and
+    discharging moved energy. A UI that draws `raw_ticks` shows a street where
+    the protection agents did nothing.
+    """
+    block: int
+    raw_ticks: list
+    settled_ticks: list
+    orders: list
+    trades: list
+    clearing_price: float | None
+    breach: Any
+    predicted_transformer: str | None
+    ageing: Any
+    bills: list
+    passes: int
+    battery_drawn: dict
+    battery_stored: dict
+    battery_discharged: dict
+    claims: list = _field(default_factory=list)
+    shortfalls: dict = _field(default_factory=dict)

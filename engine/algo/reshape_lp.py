@@ -6,27 +6,17 @@ from engine.domain import ReshapeSolution, Trade
 from engine.algo.powerflow import R_OHM_PER_M, X_OHM_PER_M, V_NOM_V, POWER_FACTOR
 import math
 
-try:
-    from engine import config as _cfg
-except ImportError:
-    _cfg = None
-
-
-def _cfg_get(name, default):
-    return getattr(_cfg, name, default) if _cfg is not None else default
-
-
-# NOTE: _cfg_get reads attributes off the engine.config MODULE, which has none
-# of these names — every lookup below has always fallen through to its default.
-# The values that matter (block_hours, loading_limit, voltage_band) are now read
-# per-call from the limits object instead; these remain only as last-resort
-# fallbacks for a caller that passes nothing.
-BLOCK_HOURS = _cfg_get("RESHAPE_BLOCK_HOURS", 1.0)       # hourly blocks (DECISIONS.md D2)
-LOADING_LIMIT = _cfg_get("RESHAPE_LOADING_LIMIT", 0.90)  # fraction of rated kVA
-STORAGE_FEE = _cfg_get("RESHAPE_STORAGE_FEE", 0.05)      # INR/kWh — cost of using battery as a lever
-# Small positive cost so the LP discharges only when a constraint needs it.
-DISCHARGE_FEE = _cfg_get("RESHAPE_DISCHARGE_FEE", 0.05)
-VOLTAGE_BAND = _cfg_get("RESHAPE_VOLTAGE_BAND", 0.05)    # +/- per-unit, matches powerflow's per-unit output
+# These were wrapped in a `_cfg_get` that read attributes off the engine.config
+# MODULE — names that have never existed there — so every lookup fell through to
+# its default and the override the helper advertised was not reachable. The
+# values that matter (block_hours, loading_limit, voltage_band) are read per-call
+# off the limits object the flow agent passes; the rest are plain constants,
+# which is what they always were in fact.
+BLOCK_HOURS = 1.0            # hourly blocks (DECISIONS.md D2)
+LOADING_LIMIT = 0.90         # fraction of rated kVA, if a caller passes none
+STORAGE_FEE = 0.05           # INR/kWh — cost of using the battery as a lever
+DISCHARGE_FEE = 0.05         # so the LP discharges only when a constraint needs it
+VOLTAGE_BAND = 0.05          # +/- per-unit, matches powerflow's per-unit output
 _Q_FACTOR = math.tan(math.acos(POWER_FACTOR))
 
 

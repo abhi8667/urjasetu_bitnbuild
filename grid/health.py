@@ -24,12 +24,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from engine.config import DEFAULT as DEFAULT_CONFIG, Config
-from engine.domain import AgeingResult, MeterTick, Trade, Transformer, TransformerState
+from engine.domain import (AgeingResult, House, MeterTick, Trade, Transformer,
+                           TransformerState)
+from engine.physics import apparent_kva, loading_k
 from engine import algo
 
-
-#: Must match the sentinel and the baseline exactly.
-POWER_FACTOR = 0.95
+# `House` above is used in the __init__ annotation. It was missing from this
+# import list and only went unnoticed because `from __future__ import
+# annotations` defers evaluation — typing.get_type_hints() on this class raised
+# NameError, and so would any runtime that resolved the annotation.
 
 
 class TransformerHealthAgent:
@@ -48,12 +51,21 @@ class TransformerHealthAgent:
         if houses is not None:
             self._house_to_tid: dict[str, str] = {h.house_id: h.transformer_id for h in houses}
         else:
+            # Constructing a whole WhitefieldFeed here just to read a mapping is
+            # expensive and hides failures; but the alternative — an empty map
+            # and a substring fallback — silently mis-assigns every tick. Keep
+            # the feed fallback, narrow the except, and let a genuine failure be
+            # visible rather than degrading into a broken map.
+            from engine.feed import WhitefieldFeed
             try:
-                from engine.feed import WhitefieldFeed
                 feed = WhitefieldFeed(self.config)
-                self._house_to_tid = {h.house_id: h.transformer_id for h in feed.houses()}
-            except Exception:
-                self._house_to_tid = {}
+            except (OSError, KeyError, ValueError) as exc:
+                raise ValueError(
+                    "TransformerHealthAgent needs a house->transformer mapping. "
+                    "Pass houses=... explicitly; the feed fallback failed."
+                ) from exc
+            self._house_to_tid = {h.house_id: h.transformer_id
+                                  for h in feed.houses()}
 
         # Cumulative loss of life in equivalent hours per transformer (HL1: monotonic)
         self._cumulative_life_hours: dict[str, float] = {t.transformer_id: 0.0 for t in self.transformers}
@@ -100,19 +112,22 @@ class TransformerHealthAgent:
             rated_life_hours = t.rated_life_hours if t.rated_life_hours > 0 else 180000.0
             replacement_cost = t.replacement_cost_inr if t.replacement_cost_inr > 0 else 250000.0
 
-            # Find ticks belonging to this transformer
-            t_ticks = [
-                tk for tk in ticks
-                if self._house_to_tid.get(tk.house_id) == tid or (not self._house_to_tid and tid in tk.house_id)
-            ]
-            # Baseline load without trades
-            # kVA, not kW: the sentinel measures K = sum|net_kw| / pf / rating_kva
-            # and the baseline does the same. F_AA is exponential in hot-spot
-            # temperature, so a 5% difference in K compounded into a 2x gap in
-            # loss of life between this agent and the baseline it is compared
-            # against — and the comparison is only meaningful apples to apples.
-            base_kw = sum(abs(tk.load_kwh - tk.gen_kwh) / block_hours
-                          for tk in t_ticks) / POWER_FACTOR
+            # Find ticks belonging to this transformer. The old fallback
+            # `tid in tk.house_id` was a substring match on a meter id — with
+            # the real registry's numeric ids ("10000") it matches nothing, and
+            # with any id that happens to contain "DT-1" it matches the wrong
+            # transformer. The mapping is now always populated (see __init__),
+            # so an unmapped tick is a bug and is left out rather than guessed.
+            t_ticks = [tk for tk in ticks
+                       if self._house_to_tid.get(tk.house_id) == tid]
+            # kVA, not kW. engine.physics.apparent_kva is the single conversion
+            # the sentinel, the baseline and the LP all now go through, so this
+            # agent and the thing it is compared against measure the same K for
+            # the same street. F_AA is exponential in hot-spot temperature, so a
+            # 5% difference in K compounds into a large gap in loss of life.
+            net_kw_total = sum(abs(tk.load_kwh - tk.gen_kwh) / block_hours
+                               for tk in t_ticks)
+            base_kva = apparent_kva(net_kw_total, self.config.power_factor)
 
             # Energy actually delivered across this transformer this block. The
             # divisor is DT throughput, not traded kWh: every loading breach on
@@ -121,8 +136,8 @@ class TransformerHealthAgent:
             # iron is being hurt most.
             delivered_kwh = sum(abs(tk.load_kwh - tk.gen_kwh) for tk in t_ticks)
 
-            load_with_kw = base_kw
-            hs_with = algo.thermal.hotspot_c(load_with_kw, rating_kva, ambient_c)
+            load_with_kva = base_kva
+            hs_with = algo.thermal.hotspot_c(load_with_kva, rating_kva, ambient_c)
             lol_with = algo.thermal.loss_of_life_hours(hs_with, block_hours)
 
             # Accumulate loss of life (HL1: monotonic non-decreasing)
@@ -152,7 +167,7 @@ class TransformerHealthAgent:
 
             new_next_adders[tid] = clamped_adder
 
-            loading_k = load_with_kw / rating_kva if rating_kva > 0 else 0.0
+            k = loading_k(net_kw_total, rating_kva, self.config.power_factor)
             life_used_frac = self._cumulative_life_hours[tid] / rated_life_hours
 
             states.append(
@@ -160,14 +175,23 @@ class TransformerHealthAgent:
                     transformer_id=tid,
                     life_used_frac=round(life_used_frac, 6),
                     hotspot_c=round(hs_with, 2),
-                    loading_k=round(loading_k, 4),
+                    loading_k=round(k, 4),
                     ageing_adder=self.ageing_adder(tid),
                 )
             )
 
         self._next_adders = new_next_adders
         self._last_states = states
-        return AgeingResult(states=states, adders=dict(self._next_adders))
+        # HL4, and this is the whole of it. `adders` is what was computed from
+        # THIS block's thermal state, in force from t+1. `active_adders` is what
+        # was computed in t-1 and is in force NOW — that is what settlement must
+        # bill at. Settlement used to read `adders` (the property pointed there),
+        # which priced this block's trades off this block's own load: retroactive,
+        # and exactly what HL4 forbids.
+        return AgeingResult(states=states,
+                            adders=dict(self._next_adders),
+                            active_adders={tid: self.ageing_adder(tid)
+                                           for tid in self._active_adders})
 
     def risk_rank(self) -> list[tuple[str, float]]:
         """Returns risk ranking of transformers via algo.risk.rank.

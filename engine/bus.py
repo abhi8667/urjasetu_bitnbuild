@@ -19,6 +19,9 @@ RING_SIZE = 500
 #: the floor, not the ceiling — but A subscribes to these by name.
 TOPICS = (
     "block_opened",
+    "strategy_updated",
+    "breach_predicted",
+    "bill_lines_posted",
     "order_submitted",
     "market_cleared",
     "breach_detected",

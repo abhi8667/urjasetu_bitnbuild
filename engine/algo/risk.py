@@ -5,17 +5,13 @@ import random
 
 from engine.domain import TransformerState
 
-try:
-    from engine import config as _cfg
-except ImportError:
-    _cfg = None
+from engine.config import DEFAULT as _DEFAULT_CONFIG
 
-
-def _cfg_get(name, default):
-    return getattr(_cfg, name, default) if _cfg is not None else default
-
-
-LIGHTGBM_ENABLED = _cfg_get("lightgbm_enabled", False)
+# `LIGHTGBM_ENABLED = _cfg_get("lightgbm_enabled", False)` used to read a MODULE
+# attribute off engine.config. `lightgbm_enabled` is a field on the Config
+# DATACLASS, so the lookup always fell through to the default and the flag was
+# dead: setting it in config.yaml changed nothing. Read from the config object.
+LIGHTGBM_ENABLED = _DEFAULT_CONFIG.lightgbm_enabled
 
 FEATURE_NAMES = [
     "loading_mean", "loading_max",

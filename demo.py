@@ -66,8 +66,15 @@ def main() -> int:
             batteries=BatteryBook(houses, config),
         )
 
-    runner = Runner(feed, pool, config, bus=CountingBus(), settlement=settle,
-                    **grid_kwargs)
+    bus = CountingBus()
+    # The settlement agent gets the bus so its own events reach the ring. It was
+    # constructed without one, so every event it published went nowhere.
+    settle.bus = bus
+    # include_baseline=False: the runner computes the counterfactual for the run
+    # summary, and this script computed it AGAIN below for the compare screen —
+    # the same 720-block loop twice. Run it once, here, and hand it to both.
+    runner = Runner(feed, pool, config, bus=bus, settlement=settle,
+                    include_baseline=False, **grid_kwargs)
     started = time.perf_counter()
     summary = runner.run(blocks=blocks)
     wall = time.perf_counter() - started
@@ -102,6 +109,8 @@ def main() -> int:
         print(f"    reshapes applied     {counts['reshape_applied']:>10}")
         print(f"    fallback curtails    {counts['fallback_curtailed']:>10}")
         print(f"    battery discharged   {counts['discharge_kwh']:>10,.1f} kWh")
+        print(f"    breaches PREDICTED   {counts['breach_predicted']:>10}"
+              f"   ({summary['breach_prediction']['precision_pct'] or 0:.0f}% precision)")
 
     print("\n  MONEY")
     net = sum(l.net_inr for l in settle.ledger)
@@ -111,9 +120,18 @@ def main() -> int:
 
     if health is not None:
         life = sum(health._cumulative_life_hours.values())
+        baseline_result = Baseline(feed, config).run(blocks=blocks)
         result = compare(p2p_economics(feed, config, settle.ledger, blocks=blocks,
                                        loss_of_life_hours=life),
-                         Baseline(feed, config).run(blocks=blocks))
+                         baseline_result)
+        summary["baseline"] = {
+            "label": baseline_result.label,
+            "household_bills_inr": baseline_result.household_bills_inr,
+            "discom_energy_revenue_inr": baseline_result.discom_energy_revenue_inr,
+            "discom_charge_revenue_inr": baseline_result.discom_charge_revenue_inr,
+            "export_credits_inr": baseline_result.export_credits_inr,
+            "loss_of_life_hours_total": baseline_result.loss_of_life_hours,
+        }
         t = result["transformer_life_hours"]
         print("\n  VS NET METERING (same feed, same seed)")
         print(f"    baseline life used   {t['baseline']:>10,.1f} h")

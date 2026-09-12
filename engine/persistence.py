@@ -42,9 +42,10 @@ CREATE TABLE IF NOT EXISTS trade (
     quantity_kwh REAL, clearing_price REAL, curtailed_fraction REAL);
 CREATE TABLE IF NOT EXISTS bill_line (
     line_id TEXT PRIMARY KEY, block INTEGER, trade_id TEXT, house_id TEXT,
-    role TEXT, quantity_kwh REAL, unit_price_inr REAL, energy_inr REAL,
-    transaction_inr REAL, wheeling_inr REAL, cross_subsidy_inr REAL,
-    storage_fee_inr REAL, ageing_inr REAL, net_inr REAL);
+    role TEXT, quantity_kwh REAL, loss_kwh REAL, unit_price_inr REAL,
+    energy_inr REAL, transaction_inr REAL, wheeling_inr REAL,
+    cross_subsidy_inr REAL, storage_fee_inr REAL, ageing_inr REAL,
+    platform_inr REAL, gst_inr REAL, net_inr REAL);
 CREATE TABLE IF NOT EXISTS transformer_state (
     block INTEGER PRIMARY KEY, state_json TEXT);
 """
@@ -112,10 +113,15 @@ class Persistence:
             ("INSERT OR REPLACE INTO trade VALUES (?,?,?,?,?,?,?)",
              [(t.trade_id, t.block, t.seller_id, t.buyer_id, t.quantity_kwh,
                t.clearing_price, t.curtailed_fraction) for t in trades]),
-            ("INSERT OR REPLACE INTO bill_line VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            # loss_kwh, platform_inr and gst_inr are columns now. BillLine has
+            # always carried loss_kwh and the table had nowhere to put it, so
+            # transmission loss survived only in memory and a resumed run had no
+            # record of it at all.
+            ("INSERT OR REPLACE INTO bill_line VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
              [(b.line_id, b.block, b.trade_id, b.house_id, b.role, b.quantity_kwh,
-               b.unit_price_inr, b.energy_inr, b.transaction_inr, b.wheeling_inr,
-               b.cross_subsidy_inr, b.storage_fee_inr, b.ageing_inr, b.net_inr)
+               b.loss_kwh, b.unit_price_inr, b.energy_inr, b.transaction_inr,
+               b.wheeling_inr, b.cross_subsidy_inr, b.storage_fee_inr,
+               b.ageing_inr, b.platform_inr, b.gst_inr, b.net_inr)
               for b in (bills or [])]),
         ]
         if ageing is not None:
@@ -126,7 +132,8 @@ class Persistence:
             statements.append((
                 "INSERT OR REPLACE INTO transformer_state VALUES (?,?)",
                 [(block, json.dumps({"life_used_frac": ageing.life_used_frac,
-                                     "ageing_adder": ageing.ageing_adder},
+                                     "ageing_adder": ageing.ageing_adder,
+                                     "next_ageing_adder": ageing.next_ageing_adder},
                                     sort_keys=True))]))
         self._atomic(statements, f"block {block}")
 

@@ -2,20 +2,35 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { City3D, type CameraMode } from './City3D'
 import { createDemoRun } from './demoFixture'
-import { DemoTransport, ReplayTransport } from './transport'
+import { DemoTransport, EngineTransport, ReplayTransport } from './transport'
+import { HAS_CONFIGURED_ENGINE } from './config'
 import type { BlockPayload, EventPayload, RunSummary, ScenePayload, Transport, TransportStatus } from './types'
 
 const money = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
 const title = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 
+/** Render a number the engine may not have. Never substitutes a plausible
+ *  figure: the UI used to fall back to literals like '148.2' and '₹4.20', which
+ *  is indistinguishable on screen from a real reading. */
+const orDash = (value: number | null | undefined, digits = 2, unit = '') =>
+  value == null || Number.isNaN(value) ? '—' : `${value.toFixed(digits)}${unit}`
+
 function useGridTransport() {
-  const liveRun = useMemo(createDemoRun, [])
+  // Kept only as the offline fallback. Everything in it is invented in
+  // TypeScript, so it must never be what the app opens on when an engine is
+  // configured — see `offline` below, which the status bar surfaces.
+  const demoRun = useMemo(createDemoRun, [])
   const transportRef = useRef<Transport | null>(null)
   const disconnectRef = useRef<(() => void) | null>(null)
   const [scene, setScene] = useState<ScenePayload | null>(null)
   const [block, setBlock] = useState<BlockPayload | null>(null)
-  const [status, setStatus] = useState<TransportStatus>('live')
+  const [status, setStatus] = useState<TransportStatus>('connecting')
   const [events, setEvents] = useState<EventPayload[]>([])
+  // The engine streams its own summary. Until it arrives there is no summary
+  // at all, and the screens that show one say so rather than drawing the
+  // fixture's constants.
+  const [summary, setSummary] = useState<RunSummary | null>(null)
+  const [offline, setOffline] = useState(!HAS_CONFIGURED_ENGINE)
   const pendingCommands = useRef<Array<{ name: string; issuedAt: number; baselineExporters: number }>>([])
 
   const connect = useCallback((transport: Transport) => {
@@ -62,6 +77,7 @@ function useGridTransport() {
       }),
       transport.onEvent((event) => setEvents((current) => [...current, event].slice(-50))),
       transport.onStatus(setStatus),
+      transport.onSummary?.(setSummary) ?? (() => {}),
     ]
     transport.start()
     disconnectRef.current = () => {
@@ -71,7 +87,18 @@ function useGridTransport() {
     return () => disconnectRef.current?.()
   }, [])
 
-  useEffect(() => connect(new DemoTransport(liveRun)), [connect, liveRun])
+  useEffect(() => {
+    // The engine is the default. `LiveTransport` existed in this file's
+    // predecessor and was never constructed — the app opened on the fixture,
+    // which is why every figure on screen was a TypeScript constant.
+    if (HAS_CONFIGURED_ENGINE) {
+      setOffline(false)
+      return connect(new EngineTransport())
+    }
+    setOffline(true)
+    setSummary(demoRun.summary)
+    return connect(new DemoTransport(demoRun))
+  }, [connect, demoRun])
 
   const command = useCallback((name: string) => {
     pendingCommands.current.push({
@@ -87,10 +114,19 @@ function useGridTransport() {
 
   const replay = useCallback(() => {
     setEvents([])
-    connect(new ReplayTransport(createDemoRun()))
+    setOffline(true)
+    const run = createDemoRun()
+    setSummary(run.summary)
+    connect(new ReplayTransport(run))
   }, [connect])
 
-  return { scene, block, status, events, command, replay, summary: liveRun.summary }
+  const reconnect = useCallback(() => {
+    setEvents([])
+    setOffline(false)
+    connect(new EngineTransport())
+  }, [connect])
+
+  return { scene, block, status, events, command, replay, reconnect, summary, offline }
 }
 
 // Circular SVG Progress Gauge
@@ -149,7 +185,8 @@ function CircularGauge({
 }
 
 export default function App() {
-  const { scene, block, status, events, command, replay, summary } = useGridTransport()
+  const { scene, block, status, events, command, replay, reconnect, summary, offline } =
+    useGridTransport()
 
   // Camera traversal state
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit')
@@ -161,7 +198,6 @@ export default function App() {
   const [showDiscomLedger, setShowDiscomLedger] = useState(false)
   const [showNodeInspector, setShowNodeInspector] = useState(false)
   const [isNightMode, setIsNightMode] = useState(true)
-  const [subsidy, setSubsidy] = useState(false)
 
   const traceRef = useRef<HTMLDivElement>(null)
 
@@ -187,6 +223,7 @@ export default function App() {
       if (event.key.toLowerCase() === 'd' && status !== 'replay') command('derate')
       if (event.key.toLowerCase() === 'c' && status !== 'replay') command('cloud')
       if (event.key.toLowerCase() === 'r') replay()
+      if (event.key.toLowerCase() === 'l') reconnect()
       if (event.key === '1') setCameraMode('orbit')
       if (event.key === '2') setCameraMode('top-down')
       if (event.key === '3') setCameraMode('perspective')
@@ -196,19 +233,68 @@ export default function App() {
   }, [command, replay, status])
 
   // Computed metrics for HUD
+  // Traded energy this block, as traded. The old version added a literal 140
+  // to whatever the block reported and fell back to the string '148.2' when
+  // there were no trades — so a block in which the market cleared nothing
+  // displayed 148.2 kWh of trading.
   const tradedKwh = useMemo(() => {
-    const sum = block?.trades.reduce((total, trade) => total + trade.kwh, 0) ?? 0
-    return sum > 0 ? (140 + sum).toFixed(1) : '148.2'
+    if (!block) return '—'
+    const sum = block.trades.reduce((total, trade) => total + trade.kwh, 0)
+    return sum.toFixed(1)
   }, [block])
 
-  const clearingPrice = useMemo(() => {
-    return block?.clearing_price != null ? `₹${block.clearing_price.toFixed(2)}` : '₹4.20'
-  }, [block])
+  // '₹4.20' was the old fallback. A block with no clearing price is a block in
+  // which nothing cleared — that is a real and common state on this street at
+  // night, and it should read as one.
+  const clearingPrice = useMemo(
+    () => (block?.clearing_price != null ? `₹${block.clearing_price.toFixed(2)}` : '—'),
+    [block],
+  )
 
-  const centralTransformer = block?.transformers['DT-3']
-  const dtLoad = centralTransformer ? Math.round(centralTransformer.loading * 100) : 72
+  // Every transformer the engine sent, in order — not three hardcoded gauges
+  // labelled Txr_North / Txr_Central / Txr_South at a fixed 78% and 98%.
+  const transformerRows = useMemo(() => {
+    if (!scene || !block) return []
+    return scene.transformers.map((transformer) => ({
+      id: transformer.id,
+      name: transformer.name ?? transformer.id,
+      ratingKva: transformer.rating_kva,
+      state: block.transformers[transformer.id],
+    }))
+  }, [scene, block])
+
+  const worstTransformer = useMemo(
+    () => transformerRows.reduce<(typeof transformerRows)[number] | null>(
+      (worst, row) =>
+        !worst || (row.state?.loading ?? 0) > (worst.state?.loading ?? 0) ? row : worst,
+      null,
+    ),
+    [transformerRows],
+  )
+  const dtLoad = worstTransformer?.state ? Math.round(worstTransformer.state.loading * 100) : 0
+
+  // Clearing price against the street's mean retail tariff — the comparison a
+  // household actually faces. null when nothing cleared, which is most of the
+  // night on this street.
+  const priceDiscountPct = useMemo(() => {
+    if (!scene || block?.clearing_price == null) return null
+    const tariffs = scene.houses
+      .map((h) => h.retail_tariff)
+      .filter((t): t is number => t != null && t > 0)
+    if (tariffs.length === 0) return null
+    const mean = tariffs.reduce((a, b) => a + b, 0) / tariffs.length
+    return ((mean - block.clearing_price) / mean) * 100
+  }, [scene, block])
+
   const activeExporters = Object.values(block?.houses ?? {}).filter((h) => h.state === 'export').length
-  const activeAgentsCount = Math.max(7, activeExporters + 4)
+  // The number of agents is the number of agents: one consumer per premises,
+  // one prosumer per PV premises, plus market, settlement, sentinel, flow and
+  // health. `Math.max(7, exporters + 4)` was a shape, not a count.
+  const activeAgentsCount = useMemo(() => {
+    if (!scene) return 0
+    const pv = scene.houses.filter((h) => h.has_pv).length
+    return scene.houses.length + pv + 5
+  }, [scene])
 
   // Selected house details
   const selectedHouse = scene?.houses.find((h) => h.id === selectedNode)
@@ -329,19 +415,33 @@ export default function App() {
             </button>
           </div>
 
-          <div className="live-status-pill">
+          {/* The label has to distinguish "connected to the engine" from
+              "running on the built-in fixture". The old DemoTransport emitted
+              'live', so a screen full of invented TypeScript constants was
+              labelled Live. */}
+          <div className={`live-status-pill${offline ? ' offline' : ''}`}>
             <span className="pulsing-live-dot" />
-            <span className="live-text">{status === 'live' ? 'Live' : title(status)}</span>
+            <span className="live-text">
+              {offline ? 'Demo data' : status === 'live' ? 'Live engine' : title(status)}
+            </span>
           </div>
         </div>
       </header>
 
       {/* Secondary Microgrid Status Strip (From Image 2) */}
       <div className="sub-status-bar">
+        {/* "Optimal", always, regardless of what the grid was doing. This is
+            the sentinel's actual verdict for the block on screen. */}
         <div className="sub-status-item">
-          <span className="dot-green" />
+          <span className={block?.breach ? 'dot-amber' : 'dot-green'} />
           <span>Microgrid Status:</span>
-          <strong>Optimal</strong>
+          <strong>
+            {!block
+              ? '—'
+              : block.breach
+                ? `${title(block.breach.kind)} breach · ${block.breach.transformer_id}`
+                : 'Within limits'}
+          </strong>
         </div>
         <div className="sub-status-divider" />
         <div className="sub-status-item">
@@ -352,13 +452,15 @@ export default function App() {
             <path d="M16 3.13a4 4 0 0 1 0 7.75" />
           </svg>
           <span>Node Count:</span>
-          <strong>{scene?.houses.length ?? 14}</strong>
+          <strong>{scene?.houses.length ?? '—'}</strong>
         </div>
         <div className="sub-status-divider" />
+        {/* Was a literal 98.6%. This is the highest transformer loading in the
+            block, which is the number that decides whether anything breaches. */}
         <div className="sub-status-item">
-          <span className="dot-amber" />
-          <span>Grid Balance:</span>
-          <strong>98.6%</strong>
+          <span className={dtLoad > 100 ? 'dot-amber' : 'dot-green'} />
+          <span>Peak DT Loading:</span>
+          <strong>{worstTransformer ? `${dtLoad}% (${worstTransformer.id})` : '—'}</strong>
         </div>
         <div className="sub-status-divider" />
         <div className="sub-status-item">
@@ -367,7 +469,9 @@ export default function App() {
             <polyline points="12 6 12 12 16 14" />
           </svg>
           <span>Block:</span>
-          <strong>#{block?.block ?? 1} ({block?.clock ?? '19:14'})</strong>
+          <strong>
+            {block ? `#${block.block} (${block.clock}, day ${block.day + 1})` : '—'}
+          </strong>
         </div>
       </div>
 
@@ -379,11 +483,11 @@ export default function App() {
             <span className="hud-value">{tradedKwh}</span>
             <span className="hud-unit">kWh</span>
           </div>
-          <span className="hud-delta positive">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="delta-arrow">
-              <path d="M12 19V5M5 12l7-7 7 7" />
-            </svg>
-            +12%
+          {/* '+12%' was a constant with an up-arrow beside it — the most
+              misleading kind of number, because it reads as a measurement. This
+              is how many trades are behind the kWh figure. */}
+          <span className="hud-delta">
+            {block ? `${block.trades.length} trades` : '—'}
           </span>
         </div>
 
@@ -395,20 +499,26 @@ export default function App() {
             <span className="hud-value">{clearingPrice}</span>
             <span className="hud-unit">/kWh</span>
           </div>
-          <span className="hud-delta favorable">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="delta-arrow">
-              <path d="M12 5v14M19 12l-7 7-7-7" />
-            </svg>
-            -6%
+          {/* '-6%' with a down-arrow, always, whatever the price did. The real
+              comparison a buyer cares about is the clearing price against what
+              the DISCOM would have charged, which the scene carries per
+              premises — so this is the discount against the street's mean
+              retail tariff. */}
+          <span className={`hud-delta${priceDiscountPct != null && priceDiscountPct > 0 ? ' favorable' : ''}`}>
+            {priceDiscountPct == null
+              ? 'no trades'
+              : `${priceDiscountPct > 0 ? '−' : '+'}${Math.abs(priceDiscountPct).toFixed(0)}% vs retail`}
           </span>
         </div>
 
         <div className="hud-divider" />
 
         <div className="hud-metric-col">
-          <span className="hud-label">DT-3 Grid Load</span>
+          {/* Was hardcoded to DT-3. The street has four transformers and which
+              one is worst changes hour to hour. */}
+          <span className="hud-label">Peak DT Load{worstTransformer ? ` · ${worstTransformer.id}` : ''}</span>
           <div className="hud-val-row">
-            <span className="hud-value">{dtLoad}%</span>
+            <span className="hud-value">{block ? `${dtLoad}%` : '—'}</span>
           </div>
           <span className="hud-spark-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5">
@@ -532,25 +642,38 @@ export default function App() {
               <div className="stream-empty-text">Listening for peer-to-peer agent broadcasts...</div>
             ) : (
               events.map((ev, i) => {
-                const isProsumer = ev.agent.toLowerCase().includes('prosumer')
-                const isSentinel = ev.agent.toLowerCase().includes('sentinel')
-                const isFlow = ev.agent.toLowerCase().includes('flow')
-                const dotColor = isProsumer ? 'dot-green' : isSentinel ? 'dot-amber' : 'dot-cyan'
+                // Colour by which agent spoke. `flow` was computed and never
+                // used, so a curtailment read the same as a settlement line.
+                const dotColor =
+                  ev.agent === 'sentinel'
+                    ? 'dot-amber'
+                    : ev.agent === 'flow'
+                      ? 'dot-red'
+                      : ev.agent === 'settlement' || ev.agent === 'market'
+                        ? 'dot-green'
+                        : 'dot-cyan'
+
+                // SIMULATED clock, from the block the event belongs to. The
+                // timestamp here was `14:${(i * 4) % 60}` — a counter dressed
+                // as a wall clock, which drifted away from the block on screen
+                // and wrapped every fifteen entries.
+                const hour = ev.block % (scene?.blocks_per_day ?? 24)
+                const stamp = `${String(hour).padStart(2, '0')}:00`
 
                 return (
-                  <div key={`${ev.block}-${i}`} className="stream-log-entry">
+                  <div key={`${ev.block}-${ev.kind}-${i}`} className="stream-log-entry">
                     <span className={`log-dot ${dotColor}`} />
                     <span className="log-text">
-                      <strong className="log-agent">[{title(ev.agent)}_Agent]:</strong> {ev.text}
+                      <strong className="log-agent">[{title(ev.agent)}]</strong> {ev.text}
                     </span>
-                    <span className="log-time">14:{((i * 4) % 60).toString().padStart(2, '0')}</span>
+                    <span className="log-time">{stamp}</span>
                   </div>
                 )
               })
             )}
           </div>
           <div className="window-footer">
-            <span>Live autonomous negotiations</span>
+            <span>{offline ? 'Demo data — engine not connected' : 'Live agent decisions'}</span>
             <small>Block #{block?.block ?? '—'}</small>
           </div>
         </div>
@@ -573,26 +696,84 @@ export default function App() {
             </button>
           </div>
           <div className="window-body">
-            {/* Radial circular gauges (Txr_North 78%, Txr_Central 92%, Txr_Nerth 98%) */}
+            {/* The health agent's own IEEE C57.91 numbers, per transformer.
+                This window was titled "TRANSFORMER HEALTH" and showed neither
+                hot-spot temperature nor loss of life — both of which the engine
+                computes every block and had nowhere to go. */}
+            <div className="comparison-mini-table">
+              <div className="comp-row comp-header">
+                <span>Transformer</span>
+                <span>Loading</span>
+                <span>Hot spot</span>
+                <span>Life used / adder</span>
+              </div>
+              {transformerRows.map((row) => (
+                <div key={row.id} className="comp-row">
+                  <strong>
+                    {row.id}
+                    {row.state?.predicted_breach && ' ⚠'}
+                  </strong>
+                  <span className={row.state?.stressed ? 'highlight-adverse' : undefined}>
+                    {orDash((row.state?.loading ?? 0) * 100, 1, '%')}
+                  </span>
+                  <span>{orDash(row.state?.hotspot_c, 1, ' °C')}</span>
+                  <span>
+                    {/* HOURS, not a percentage of rated life: the fraction is
+                        ~1e-5 over a month and renders as 0.0000% at any
+                        reasonable precision. The ageing adder beside it is the
+                        price signal that wear is generating. */}
+                    {orDash(row.state?.life_used_hours, 3, ' h')}
+                    {row.state?.ageing_adder_inr != null &&
+                      row.state.ageing_adder_inr > 0 &&
+                      ` · ₹${row.state.ageing_adder_inr.toFixed(3)}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {block?.transformers &&
+              Object.values(block.transformers).some((t) => t.predicted_breach) && (
+                <p className="node-empty-guide">
+                  ⚠ marks a transformer the sentinel's one-block-ahead forecast
+                  expects to breach next block. Advisory only — nothing acts on a
+                  forecast, because a bad forecast must never curtail a real trade.
+                </p>
+              )}
+
+            {/* One gauge per transformer the engine actually sent. This used to
+                be three fixed gauges labelled Txr_North / Txr_Central / Txr_South
+                at a literal 78% and 98%, with only the middle one wired to data —
+                and the street has four transformers named DT-1..DT-4. */}
             <div className="gauges-flex-row">
-              <CircularGauge label="Txr_North" value={78} color="#00f0ff" sublabel="78%" />
-              <CircularGauge label="Txr_Central" value={dtLoad} color="#ffb703" sublabel={`${dtLoad}%`} />
-              <CircularGauge label="Txr_South" value={98} color="#00f0ff" sublabel="98%" />
+              {transformerRows.map((row) => (
+                <CircularGauge
+                  key={row.id}
+                  label={row.id}
+                  value={Math.round((row.state?.loading ?? 0) * 100)}
+                  color={row.state?.stressed ? '#ff4d6d' : '#00f0ff'}
+                  sublabel={`${Math.round((row.state?.loading ?? 0) * 100)}% · ${row.ratingKva} kVA`}
+                />
+              ))}
+              {transformerRows.length === 0 && (
+                <p className="node-empty-guide">Waiting for the engine's first block.</p>
+              )}
             </div>
 
-            {/* Bottom summary metrics (Matches Image 2!) */}
+            {/* Per-block figures from the settlement agent's own ledger. The
+                three constants here before (3,450 kWh / 215 / 94) never moved. */}
             <div className="ledger-metrics-grid">
               <div className="ledger-stat-item">
-                <span className="stat-label">Today's Volume</span>
-                <strong className="stat-val">3,450 <small>kWh</small></strong>
+                <span className="stat-label">Traded this block</span>
+                <strong className="stat-val">{tradedKwh} <small>kWh</small></strong>
               </div>
               <div className="ledger-stat-item">
-                <span className="stat-label">P2P Settlements</span>
-                <strong className="stat-val">215</strong>
+                <span className="stat-label">Bill lines posted</span>
+                <strong className="stat-val">{block?.settlement?.bill_lines ?? '—'}</strong>
               </div>
               <div className="ledger-stat-item">
-                <span className="stat-label">Active Contracts</span>
-                <strong className="stat-val">94</strong>
+                <span className="stat-label">Charges collected</span>
+                <strong className="stat-val">
+                  {block?.settlement ? money(block.settlement.charges_inr) : '—'}
+                </strong>
               </div>
             </div>
           </div>
@@ -616,55 +797,111 @@ export default function App() {
             </button>
           </div>
           <div className="window-body">
-            <div className="discom-top-stats">
-              <div className="discom-stat-card">
-                <span>Wheeling & Charges Collected</span>
-                <strong>{money(summary.discomRevenueUrjasetu + (subsidy ? 684 : 0))}</strong>
-                <small>Wheeling fees + clearing settlements</small>
-              </div>
-              <div className="discom-stat-card">
-                <span>Asset Replacement Deferred</span>
-                <strong>{money(summary.deferredCapex)}</strong>
-                <small>Modeled transformer lifetime extension</small>
-              </div>
-            </div>
+            {!summary ? (
+              <p className="node-empty-guide">
+                Waiting for the engine's run summary. Nothing is shown here until it
+                arrives — these figures come from a completed 30-day run, and a
+                placeholder would be indistinguishable from a result.
+              </p>
+            ) : (
+              <>
+                <div className="discom-top-stats">
+                  <div className="discom-stat-card">
+                    <span>Wheeling &amp; Charges Collected</span>
+                    <strong>{money(summary.discomRevenueUrjasetu)}</strong>
+                    <small>
+                      Energy + wheeling + transaction + platform + GST + ageing,
+                      over {summary.days} simulated days
+                    </small>
+                  </div>
+                  <div className="discom-stat-card">
+                    <span>Asset Replacement Deferred</span>
+                    <strong>{money(summary.deferredCapex)}</strong>
+                    <small>
+                      {orDash(summary.lifeSavedHours, 1, ' h')} of insulation life
+                      saved
+                      {summary.deferredCapexAnnualised != null &&
+                        ` · ${money(summary.deferredCapexAnnualised)} annualised`}
+                    </small>
+                  </div>
+                </div>
 
-            <label className="subsidy-toggle-label">
-              <input
-                type="checkbox"
-                checked={subsidy}
-                onChange={(e) => setSubsidy(e.target.checked)}
-              />
-              <span>Apply Configured DISCOM Cross-Subsidy Surcharge (+₹684)</span>
-            </label>
+                {/* The cross-subsidy surcharge is a CONFIG value
+                    (cross_subsidy / cross_subsidy_enabled) that the engine bills
+                    per kWh. The checkbox here used to add a flat ₹684 to the
+                    displayed revenue and nothing else — a number on screen with
+                    no counterpart anywhere in the engine. Removed rather than
+                    re-wired: a toggle that changes the settlement basis has to
+                    re-run the simulation, which is a server concern. */}
 
-            {/* Comparison Table */}
-            <div className="comparison-mini-table">
-              <div className="comp-row comp-header">
-                <span>Metric</span>
-                <span>Baseline (Net Metering)</span>
-                <span>UrjaSetu P2P</span>
-                <span>Benefit</span>
-              </div>
-              <div className="comp-row">
-                <strong>Household Monthly Bill</strong>
-                <span>{money(summary.householdBillBaseline)}</span>
-                <span>{money(summary.householdBillUrjasetu)}</span>
-                <span className="highlight-favorable">−{money(summary.householdBillBaseline - summary.householdBillUrjasetu)}</span>
-              </div>
-              <div className="comp-row">
-                <strong>DISCOM Revenue</strong>
-                <span>{money(summary.discomRevenueBaseline)}</span>
-                <span>{money(summary.discomRevenueUrjasetu)}</span>
-                <span className="highlight-favorable">+{money(summary.discomRevenueUrjasetu - summary.discomRevenueBaseline)}</span>
-              </div>
-              <div className="comp-row">
-                <strong>Transformer Degradation</strong>
-                <span>{summary.transformerLifeBaseline.toFixed(3)}%</span>
-                <span>{summary.transformerLifeUrjasetu.toFixed(3)}%</span>
-                <span className="highlight-favorable">−{Math.round((1 - summary.transformerLifeUrjasetu / summary.transformerLifeBaseline) * 100)}%</span>
-              </div>
-            </div>
+                <div className="comparison-mini-table">
+                  <div className="comp-row comp-header">
+                    <span>Metric</span>
+                    <span>Baseline (Net Metering)</span>
+                    <span>UrjaSetu P2P</span>
+                    <span>Benefit</span>
+                  </div>
+                  <div className="comp-row">
+                    <strong>Household bills ({summary.days}d)</strong>
+                    <span>{money(summary.householdBillBaseline)}</span>
+                    <span>{money(summary.householdBillUrjasetu)}</span>
+                    <span
+                      className={
+                        (summary.householdSavingInr ?? 0) >= 0
+                          ? 'highlight-favorable'
+                          : 'highlight-adverse'
+                      }
+                    >
+                      {(summary.householdSavingInr ?? 0) >= 0 ? '−' : '+'}
+                      {money(Math.abs(summary.householdSavingInr ?? 0))}
+                    </span>
+                  </div>
+                  <div className="comp-row">
+                    <strong>DISCOM revenue</strong>
+                    <span>{money(summary.discomRevenueBaseline)}</span>
+                    <span>{money(summary.discomRevenueUrjasetu)}</span>
+                    <span className="highlight-favorable">
+                      +{money(summary.discomGainInr ?? 0)}
+                    </span>
+                  </div>
+                  <div className="comp-row">
+                    {/* HOURS of loss-of-life, not a percentage. The old table
+                        printed these with a % sign appended, so 619.2 hours of
+                        insulation life rendered as "619.200%". */}
+                    <strong>Transformer life used</strong>
+                    <span>{orDash(summary.transformerLifeBaseline, 1, ' h')}</span>
+                    <span>{orDash(summary.transformerLifeUrjasetu, 1, ' h')}</span>
+                    <span className="highlight-favorable">
+                      −
+                      {summary.transformerLifeBaseline
+                        ? Math.round(
+                            (1 -
+                              summary.transformerLifeUrjasetu /
+                                summary.transformerLifeBaseline) *
+                              100,
+                          )
+                        : 0}
+                      %
+                    </span>
+                  </div>
+                </div>
+
+                {/* The check the entire argument rests on, stated on screen
+                    rather than assumed. If it ever reads FAILS, the ageing price
+                    signal is not doing its job and the demo should say so. */}
+                <p
+                  className={
+                    summary.baselineAgesAtLeastAsFast === false
+                      ? 'highlight-adverse'
+                      : 'highlight-favorable'
+                  }
+                >
+                  {summary.baselineAgesAtLeastAsFast === false
+                    ? 'CHECK FAILS — P2P aged the transformers faster than net metering.'
+                    : 'Check holds — net metering ages the transformers at least as fast as UrjaSetu.'}
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -706,42 +943,92 @@ export default function App() {
             {selectedHouse ? (
               <div className="node-card-details">
                 <div className="node-stat-grid">
+                  {/* Every figure below comes off the scene payload, which is
+                      built from the device registry. They were literals: '4.8 kWp'
+                      for any PV premises, '10 kWh LiFePO4' for any battery, a
+                      0.78 state-of-charge fallback, and '0.85 kWh' of power flow
+                      for a premises with no reading. The registry has real,
+                      per-premises values for all of them. */}
                   <div className="node-stat-box">
                     <span>Power Flow</span>
                     <strong>
                       {selectedReading
                         ? `${Math.abs(selectedReading.net_kwh).toFixed(2)} kWh`
-                        : '0.85 kWh'}
+                        : '—'}
                     </strong>
-                    <small>{selectedReading?.state === 'export' ? 'Solar Export' : 'Grid Import'}</small>
+                    <small>
+                      {selectedReading
+                        ? selectedReading.state === 'export'
+                          ? 'Solar export'
+                          : selectedReading.state === 'import'
+                            ? 'Grid import'
+                            : 'Balanced'
+                        : 'No reading this block'}
+                    </small>
                   </div>
 
                   <div className="node-stat-box">
                     <span>Rooftop Solar</span>
-                    <strong>{selectedHouse.has_pv ? '4.8 kWp' : 'None'}</strong>
-                    <small>{selectedHouse.has_pv ? 'Active Generation' : 'Consumer Node'}</small>
+                    <strong>
+                      {selectedHouse.has_pv
+                        ? `${orDash(selectedHouse.pv_kw, 1)} kWp`
+                        : 'None'}
+                    </strong>
+                    <small>{selectedHouse.has_pv ? 'Rated capacity' : 'Consumer node'}</small>
                   </div>
 
                   <div className="node-stat-box">
                     <span>Battery Storage</span>
                     <strong>
                       {selectedHouse.has_battery
-                        ? `${Math.round((selectedReading?.soc_frac ?? 0.78) * 100)}%`
-                        : 'Not Installed'}
+                        ? selectedReading?.soc_frac != null
+                          ? `${Math.round(selectedReading.soc_frac * 100)}%`
+                          : '—'
+                        : 'Not installed'}
                     </strong>
-                    <small>{selectedHouse.has_battery ? '10 kWh LiFePO4' : 'No local BESS'}</small>
+                    <small>
+                      {selectedHouse.has_battery
+                        ? `${orDash(selectedHouse.battery_kwh, 1)} kWh · ` +
+                          `±${orDash(selectedHouse.battery_max_kw, 1)} kW`
+                        : 'No local BESS'}
+                    </small>
                   </div>
 
                   <div className="node-stat-box">
                     <span>Feeder Phase</span>
                     <strong>Phase {selectedHouse.phase}</strong>
-                    <small>Fed via {selectedHouse.transformer}</small>
+                    <small>
+                      {selectedHouse.transformer}
+                      {selectedHouse.distance_m != null &&
+                        ` · ${selectedHouse.distance_m.toFixed(0)} m`}
+                    </small>
+                  </div>
+
+                  <div className="node-stat-box">
+                    <span>Retail Tariff</span>
+                    <strong>
+                      {selectedHouse.retail_tariff != null
+                        ? `₹${selectedHouse.retail_tariff.toFixed(2)}`
+                        : '—'}
+                    </strong>
+                    <small>BESCOM slab rate, per kWh</small>
+                  </div>
+
+                  <div className="node-stat-box">
+                    <span>Line Loss</span>
+                    <strong>{orDash(selectedHouse.transmission_loss_pct, 2, '%')}</strong>
+                    <small>Energy lost between this meter and its DT</small>
                   </div>
                 </div>
 
                 <div className="node-action-bar">
                   <span className="status-indicator">
-                    <span className="dot-green" /> Smart Agent Active
+                    <span className="dot-green" />
+                    {selectedHouse.has_pv
+                      ? 'Prosumer + consumer agents active'
+                      : 'Consumer agent active'}
+                    {selectedReading && selectedReading.curtailed > 0 &&
+                      ` · curtailed ${Math.round(selectedReading.curtailed * 100)}%`}
                   </span>
                   <button
                     className="focus-node-btn"

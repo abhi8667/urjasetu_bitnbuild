@@ -1,17 +1,38 @@
-export type TransportStatus = 'live' | 'replay' | 'stale' | 'disconnected'
+// The transport contract. Every field here is produced by `server/payloads.py`
+// from engine data — nothing in this file is a shape the UI invented.
+//
+// Fields marked NEW did not exist when the UI ran on `demoFixture.ts`. The UI
+// was guessing them instead: PV capacity was the string "4.8 kWp" typed into
+// App.tsx, battery capacity was "10 kWh LiFePO4", and state of charge fell back
+// to 0.78 whenever the payload had none. Those are real per-premises values in
+// the registry and they now travel with the scene.
+
+export type TransportStatus = 'live' | 'replay' | 'stale' | 'disconnected' | 'connecting'
 export type BlockStatus = 'cleared' | 'reshaped' | 'fallback'
 export type HouseState = 'export' | 'import' | 'idle'
 export type Phase = 'A' | 'B' | 'C'
+export type BuildingType = 'res' | 'apt' | 'com' | 'evhub'
+export type BreachKind = 'loading' | 'phase' | 'voltage'
 
 export interface SceneHouse {
   id: string
   transformer: string
   phase: Phase
+  /** Metres east of the street's centroid, projected from the surveyed lat/lon. */
   x: number
+  /** Metres north of the street's centroid. */
   y: number
   has_pv: boolean
   has_battery: boolean
   kind?: 'premise' | 'evhub'
+  // NEW — real registry values, per premises.
+  building_type?: BuildingType
+  pv_kw?: number
+  battery_kwh?: number
+  battery_max_kw?: number
+  retail_tariff?: number
+  distance_m?: number
+  transmission_loss_pct?: number
 }
 
 export interface SceneTransformer {
@@ -19,6 +40,11 @@ export interface SceneTransformer {
   rating_kva: number
   x: number
   y: number
+  // NEW
+  name?: string
+  feeder_id?: string
+  /** As installed per transformer_registry.json, before the engine's override. */
+  registry_kva?: number | null
 }
 
 export interface ScenePayload {
@@ -26,20 +52,34 @@ export interface ScenePayload {
   transformers: SceneTransformer[]
   blocks_per_day: number
   replay_rate: number
+  // NEW
+  origin?: { lat: number; lon: number }
+  power_factor?: number
+  loading_limit?: number
 }
 
 export interface HouseBlockState {
   net_kwh: number
   state: HouseState
+  /** null when the premises has no battery. Never a placeholder. */
   soc_frac: number | null
   curtailed: number
 }
 
 export interface TransformerBlockState {
   loading: number
-  hotspot_c: number
-  life_used_frac: number
+  /** null before the health agent has produced a state for this block. */
+  hotspot_c: number | null
+  life_used_frac: number | null
   stressed: boolean
+  // NEW
+  /** Cumulative loss of life in equivalent HOURS. `life_used_frac` is a
+   *  fraction of a 180,000-hour rating and is ~1e-5 over a month, which renders
+   *  as "0.0000%" — hours is the legible unit and the one the thermal model
+   *  actually works in. */
+  life_used_hours?: number | null
+  ageing_adder_inr?: number
+  predicted_breach?: boolean
 }
 
 export interface TradePayload {
@@ -48,6 +88,8 @@ export interface TradePayload {
   kwh: number
   price: number
   curtailed: number
+  /** NEW — what was struck before the flow agent curtailed it. */
+  requested_kwh?: number
 }
 
 export interface BlockPayload {
@@ -59,6 +101,10 @@ export interface BlockPayload {
   houses: Record<string, HouseBlockState>
   transformers: Record<string, TransformerBlockState>
   trades: TradePayload[]
+  // NEW
+  breach?: { transformer_id: string; kind: BreachKind; severity: number } | null
+  battery?: { charged_kwh: number; discharged_kwh: number }
+  settlement?: { bill_lines: number; charges_inr: number }
 }
 
 export interface EventPayload {
@@ -76,9 +122,17 @@ export interface RunSummary {
   householdBillUrjasetu: number
   discomRevenueBaseline: number
   discomRevenueUrjasetu: number
+  /** Cumulative loss-of-life HOURS, not a percentage. */
   transformerLifeBaseline: number
   transformerLifeUrjasetu: number
   deferredCapex: number
+  // NEW — all computed by the engine, none typed in.
+  deferredCapexAnnualised?: number
+  /** The check the whole argument rests on. Shown, not assumed. */
+  baselineAgesAtLeastAsFast?: boolean
+  lifeSavedHours?: number
+  householdSavingInr?: number
+  discomGainInr?: number
 }
 
 export interface DemoRun {
@@ -93,6 +147,8 @@ export interface Transport {
   onBlock(cb: (block: BlockPayload) => void): () => void
   onEvent(cb: (event: EventPayload) => void): () => void
   onStatus(cb: (status: TransportStatus) => void): () => void
+  /** NEW — the engine streams its own run summary; the fixture could not. */
+  onSummary?(cb: (summary: RunSummary) => void): () => void
   command(name: string, args: Record<string, unknown>): void
   seek(block: number): void
   start(): void

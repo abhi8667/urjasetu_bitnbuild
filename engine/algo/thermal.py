@@ -5,22 +5,14 @@ import math
 
 from engine.domain import ThermalParams
 
-try:
-    from engine import config as _cfg
-except ImportError:
-    _cfg = None
-
-
-def _cfg_get(name, default):
-    return getattr(_cfg, name, default) if _cfg is not None else default
-
-
-# R (load-loss / no-load-loss ratio) is not a field on ThermalParams in
-# domain.py — kept here as a plain configurable constant, the same pattern
-# as R_OHM_PER_M / X_OHM_PER_M / V_NOM_V / POWER_FACTOR in powerflow.py.
-# Override via engine.config.THERMAL_R; defaults to the IEEE C57.91 typical
-# distribution-transformer value.
-THERMAL_R = _cfg_get("THERMAL_R", 5.0)
+# R, the load-loss / no-load-loss ratio. `ThermalParams` already carries it as
+# `oil_resistance_ratio_R`; this module-level copy existed because the parameter
+# was not threaded through, and it was wrapped in a `_cfg_get` reading a module
+# attribute (`engine.config.THERMAL_R`) that has never existed, so the "override
+# via config" it advertised never worked. It now takes its value from
+# ThermalParams, which is the single declared source, and `hotspot_c` reads the
+# params object it is given rather than this global.
+THERMAL_R = ThermalParams().oil_resistance_ratio_R
 
 DEFAULT_PARAMS = ThermalParams()
 
@@ -49,7 +41,10 @@ def hotspot_c(load_kva: float, rating_kva: float, ambient_c: float,
         return ambient_c
 
     K = load_kva / rating_kva
-    d_top_oil = params.rated_top_oil_rise_c * ((K**2 * THERMAL_R + 1) / (THERMAL_R + 1)) ** params.oil_exponent_n
+    # params.oil_resistance_ratio_R, not the module global: a caller that passes
+    # a custom ThermalParams was silently getting the default R regardless.
+    r = params.oil_resistance_ratio_R
+    d_top_oil = params.rated_top_oil_rise_c * ((K**2 * r + 1) / (r + 1)) ** params.oil_exponent_n
     d_hotspot = params.hotspot_gradient_c * K ** (2 * params.winding_exponent_m)
     return ambient_c + d_top_oil + d_hotspot
 

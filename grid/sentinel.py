@@ -4,9 +4,16 @@ Adheres strictly to docs/person-c-implementation-plan.md Phase 2,
 docs/person-c-grid-agents.md §5.1, and docs/urjasetu-prd.md §6.4.
 
 Evaluates three physical constraints per transformer:
-  1. Loading: K = sum(|net_kw|) / rating_kva > config.loading_limit (1.00)
+  1. Loading: K = apparent_kva(sum|net_kw|) / rating_kva > config.loading_limit
   2. Phase Imbalance: max(P_A, P_B, P_C) / mean(P_A, P_B, P_C) > config.phase_limit (1.15)
   3. Voltage Deviation: |dev| > config.voltage_band (0.06) via algo.powerflow.voltage_dev
+
+Loading goes through `engine.physics.loading_k`, which divides by the configured
+power factor. This file used to compare kW against a kVA rating directly, which
+put its K 5.3% below the figure `grid/health.py` and `engine/sim/baseline.py`
+computed for the same transformer in the same block — so the sentinel would pass
+a transformer the health agent was already ageing hard. One helper now, and the
+power factor is a config field rather than a literal in four places.
 
 Invariants:
   SN1: check() is pure — never mutates trades, ticks, or agent state.
@@ -17,7 +24,9 @@ from __future__ import annotations
 from typing import Any
 from engine.config import DEFAULT as DEFAULT_CONFIG, Config
 from engine.domain import Breach, House, MeterTick, Trade, Transformer
+from engine.physics import apparent_kva, loading_k
 from engine import algo
+from engine.trades import delivered_kwh
 
 
 class GridSentinel:
@@ -94,10 +103,17 @@ class GridSentinel:
             if h.house_id not in net_kw:
                 net_kw[h.house_id] = 0.0
 
-        # Adjust for trades
+        # Adjust for trades.
+        #
+        # `delivered_kwh` is the ONE place that decides what a Trade's quantity
+        # means. This used to read `quantity_kwh * (1 - curtailed_fraction)`,
+        # but FlowAgent.fallback_curtail already scales quantity_kwh down AND
+        # records curtailed_fraction, so every curtailed trade was being
+        # discounted twice — rho squared instead of rho. Settlement read the
+        # quantity raw and was right; the sentinel was wrong, which meant any
+        # re-check after a curtailment measured a street that did not exist.
         for tr in trades:
-            eff_qty = tr.quantity_kwh * (1.0 - tr.curtailed_fraction)
-            kw_rate = eff_qty / block_hours
+            kw_rate = delivered_kwh(tr) / block_hours
             if tr.seller_id in net_kw:
                 net_kw[tr.seller_id] += kw_rate
             if tr.buyer_id in net_kw:
@@ -108,13 +124,14 @@ class GridSentinel:
     def _loading(
         self, t: Transformer, houses: list[House], net_kw: dict[str, float]
     ) -> list[Breach]:
-        """Loading check: K = sum(|net_kw|) / rating_kva > config.loading_limit."""
+        """Loading check: K = apparent_kva(sum|net_kw|) / rating_kva > limit."""
         if t.rating_kva <= 0:
             return []
 
         actual_load_kw = sum(abs(net_kw.get(h.house_id, 0.0)) for h in houses)
-        # In PRD & decisions: K = actual_load / rating_kva
-        k = actual_load_kw / t.rating_kva
+        # Meters report kW; a transformer is rated in kVA. engine.physics does
+        # the conversion so every agent gets the same K for the same street.
+        k = loading_k(actual_load_kw, t.rating_kva, self.config.power_factor)
         limit = self.config.loading_limit
 
         if k > limit:
@@ -128,7 +145,13 @@ class GridSentinel:
                         "loading_k": k,
                         "limit": limit,
                         "actual_load_kw": actual_load_kw,
+                        # The same load expressed the way the rating is. The
+                        # flow agent's fallback divides by this, not by the kW
+                        # figure, or its retention fraction is off by 1/pf.
+                        "actual_load_kva": apparent_kva(
+                            actual_load_kw, self.config.power_factor),
                         "rating_kva": t.rating_kva,
+                        "power_factor": self.config.power_factor,
                     },
                 )
             ]

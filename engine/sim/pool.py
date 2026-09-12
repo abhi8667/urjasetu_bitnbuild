@@ -23,8 +23,16 @@ class AgentPool:
                           for h in ordered if h.has_pv}
         self.consumers = {h.house_id: ConsumerAgent(h, config, rng, strategy)
                           for h in ordered}
+        self.houses = ordered
         #: house_id -> kWh the last build() held back to charge a battery.
         self.battery_reserves: dict[str, float] = {}
+        #: The strategy every agent is currently running. The LLM layer moves
+        #: this once per simulated day via `set_strategy`; with the LLM off it
+        #: stays at the declared defaults for the whole run, which is what PRD
+        #: integration check 10 requires.
+        self.strategy = strategy or StrategyParams()
+        #: Clearing prices seen so far, the only history the LLM is given.
+        self.price_history: list[float] = []
 
     def build(self, block: int, ticks: list[MeterTick], feed=None) -> list[Order]:
         orders: list[Order] = []
@@ -48,8 +56,22 @@ class AgentPool:
                 orders.append(order)
         return sorted(orders, key=lambda o: o.order_id)
 
+    def set_strategy(self, strategy: StrategyParams) -> None:
+        """Swap the strategy every agent trades on.
+
+        Called once per simulated day by the runner, from `algo.llm`. The
+        agents are otherwise unchanged — an LLM that is off, slow or wrong
+        cannot do anything here except leave the previous parameters in place,
+        which is exactly the defaults the engine ships on.
+        """
+        self.strategy = strategy
+        for agent in (*self.prosumers.values(), *self.consumers.values()):
+            agent.strategy = strategy
+
     def on_settled(self, block: int, ticks: list[MeterTick], trades: list[Trade],
                    clearing_price: float | None, bill_lines: list[BillLine]) -> None:
+        if clearing_price is not None:
+            self.price_history.append(clearing_price)
         by_house = {t.house_id: t for t in ticks}
         for house_id, prosumer in self.prosumers.items():
             prosumer.on_settled(block, [by_house[house_id]], trades, clearing_price)

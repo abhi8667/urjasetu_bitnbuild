@@ -64,8 +64,21 @@ class ConsumerAgent:
         Not a warning, not a clamp. A household that would pay more than the
         grid charges has no reason to be in this market at all, and silently
         clamping hides the bug that produced it.
+
+        The check used to test `retail * (1 - margin) > retail`, which is false
+        for any non-negative margin and so could never fire — a dead assertion
+        that read as a guarantee. What can actually go wrong is a NEGATIVE
+        margin, which the LLM strategy layer could in principle hand over, so
+        that is what is checked: the margin itself, at the point where a bad
+        value enters, rather than an arithmetic identity downstream of it.
         """
-        ceiling = round(self.house.retail_tariff * (1 - self.strategy.margin), 4)
+        margin = self.strategy.margin
+        if margin < 0.0:
+            raise InvariantError(
+                f"CN1: {self.house.house_id} has a negative bid margin "
+                f"{margin} — it would bid ABOVE its retail tariff "
+                f"{self.house.retail_tariff} and should not be in this market")
+        ceiling = round(self.house.retail_tariff * (1 - margin), 4)
         if ceiling > self.house.retail_tariff + 1e-9:
             raise InvariantError(
                 f"CN1: {self.house.house_id} bid ceiling {ceiling} exceeds retail "
