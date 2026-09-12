@@ -136,6 +136,7 @@ class Runner:
 
         result = self.market.clear(block, orders)
         settled_ticks = ticks
+        plan = None
         passes = 1
         breach = self.sentinel.check(result.trades, ticks) if self.sentinel else None
 
@@ -185,10 +186,39 @@ class Runner:
                         "trades": len(result.trades),
                     })
 
+        # One event carrying every kWh that entered or left a battery this
+        # block. FL4 is unverifiable without it: charging happens before the
+        # market and discharging inside the reshape, so nothing downstream
+        # could otherwise see both halves of the battery term.
+        discharged_now = dict(getattr(plan, "battery_discharges", {}) or {}) if plan else {}
+        if stored_now or discharged_now:
+            self.bus.publish("battery_moved", block, "runner", {
+                "charged_kwh": {k: round(v, 9) for k, v in sorted(stored_now.items())},
+                "discharged_kwh": {k: round(v, 9) for k, v in sorted(discharged_now.items())},
+                "net_into_batteries_kwh": round(
+                    sum(stored_now.values()) - sum(discharged_now.values()), 9),
+            })
+
         if passes > MAX_CLEARING_PASSES:
             raise InvariantError(
                 f"P1: block {block} used {passes} clearing passes, bound is "
                 f"{MAX_CLEARING_PASSES}")
+
+        # Forecast commitments meet physical reality here. Offers are built from
+        # an EWMA forecast, so a seller can commit to more than it turns out to
+        # have generated, and nothing downstream reconciled the two: 12.3% of
+        # all traded energy was being sold by premises that never produced it.
+        # That is energy the market moved and the street never made, and it is
+        # exactly the "inventing kilowatt-hours" failure FL4 exists to catch.
+        # The undeliverable share is trimmed; the seller simply earns less,
+        # which is the natural economic consequence of a bad forecast.
+        result.trades[:], shortfalls = _reconcile_delivery(
+            result.trades, settled_ticks, discharged_now, self.config)
+        if shortfalls:
+            self.bus.publish("delivery_shortfall", block, "runner", {
+                "sellers": len(shortfalls),
+                "kwh": round(sum(shortfalls.values()), 6),
+            })
 
         # The health agent reads ticks, so hand it the ticks the reshape left
         # behind — a battery that discharged genuinely reduced what the iron
@@ -223,6 +253,53 @@ class Runner:
             "volume_kwh": round(sum(t.quantity_kwh for t in result.trades), 6),
             "bills": len(bills) if bills else 0,
         })
+
+
+def _reconcile_delivery(trades: list[Trade], ticks: list[MeterTick],
+                        discharged: dict[str, float], config):
+    """Trim every trade to energy its seller physically had this block.
+
+    A premises can deliver its own surplus (generation beyond its own load) plus
+    whatever it discharged from its battery. Anything it committed beyond that
+    does not exist, and clearing it anyway creates kWh from nothing.
+
+    Where a seller is short, its trades are scaled down proportionally rather
+    than cancelled — every buyer takes the same haircut, which is the neutral
+    treatment, and no single counterparty absorbs one seller's forecast error.
+    """
+    by_house = {t.house_id: t for t in ticks}
+    sold: dict[str, float] = {}
+    for trade in trades:
+        sold[trade.seller_id] = sold.get(trade.seller_id, 0.0) + trade.quantity_kwh
+
+    scale: dict[str, float] = {}
+    shortfalls: dict[str, float] = {}
+    for seller_id, committed in sold.items():
+        tick = by_house.get(seller_id)
+        surplus = max(0.0, tick.gen_kwh - tick.load_kwh) if tick else 0.0
+        available = surplus + discharged.get(seller_id, 0.0)
+        if committed > available + 1e-9:
+            scale[seller_id] = available / committed if committed > 0 else 0.0
+            shortfalls[seller_id] = round(committed - available, 9)
+
+    if not scale:
+        return list(trades), {}
+
+    out = []
+    for trade in trades:
+        factor = scale.get(trade.seller_id)
+        if factor is None:
+            out.append(trade)
+            continue
+        delivered = trade.quantity_kwh * factor
+        if delivered <= config.min_order_kwh * 0.01:
+            continue          # nothing meaningful left to settle
+        out.append(Trade(
+            trade_id=trade.trade_id, block=trade.block, seller_id=trade.seller_id,
+            buyer_id=trade.buyer_id, quantity_kwh=round(delivered, 9),
+            clearing_price=trade.clearing_price,
+            curtailed_fraction=trade.curtailed_fraction))
+    return out, shortfalls
 
 
 def _apply_battery(ticks: list[MeterTick], plan, config) -> list[MeterTick]:

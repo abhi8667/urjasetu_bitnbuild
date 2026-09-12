@@ -47,7 +47,7 @@ class StubFeed:
 def _pool_run(blocks=None, config=CONFIG, ageing=None):
     feed = WhitefieldFeed(config)
     pool = AgentPool(feed.houses(), config)
-    settlement = SettlementAgent(feed.houses(), config, consumers=pool.consumers)
+    settlement = SettlementAgent(feed.houses(), config, consumers=pool.consumers, feed=feed)
     runner = Runner(feed, pool, config, settlement=settlement)
     summary = runner.run(blocks=blocks)
     return runner, pool, settlement, summary
@@ -174,7 +174,7 @@ def test_one_trade_produces_exactly_the_six_expected_components():
     Seller nets -8.00 + 0.42 = -7.58. Buyer nets 8.00 + 0.42 + 2.02 = 10.44.
     They sum to 2.86, which is exactly what the DISCOM collected — ST1.
     """
-    agent = SettlementAgent(FEED.houses(), CONFIG)
+    agent = SettlementAgent(FEED.houses(), CONFIG, feed=FEED)
     seller, buyer = agent.settle([Trade("T1", 12, "10006", "10000", 2.0, 4.0, 0.0)])
     assert [round(c, 6) for c in seller.components] == [-8.0, 0.42, 0.0, 0.0, 0.0, 0.0]
     assert [round(c, 6) for c in buyer.components] == [8.0, 0.42, 2.02, 0.0, 0.0, 0.0]
@@ -195,7 +195,7 @@ def test_st2_components_always_sum_to_net():
 
 
 def test_st3_a_bill_line_without_a_trade_raises():
-    agent = SettlementAgent(FEED.houses(), CONFIG)
+    agent = SettlementAgent(FEED.houses(), CONFIG, feed=FEED)
     trade = Trade("T1", 0, "10006", "10000", 1.0, 4.0, 0.0)
     lines = agent.settle([trade])
     from engine.agents.settlement import _assert_st3
@@ -208,9 +208,9 @@ def test_st3_a_bill_line_without_a_trade_raises():
 
 def test_cross_subsidy_toggle_changes_only_that_column():
     trade = [Trade("T1", 0, "10006", "10000", 2.0, 4.0, 0.0)]
-    off = SettlementAgent(FEED.houses(), CONFIG).settle(trade)
+    off = SettlementAgent(FEED.houses(), CONFIG, feed=FEED).settle(trade)
     on_config = replace(CONFIG, cross_subsidy=0.5, cross_subsidy_enabled=True)
-    on = SettlementAgent(FEED.houses(), on_config).settle(trade)
+    on = SettlementAgent(FEED.houses(), on_config, feed=FEED).settle(trade)
     for a, b in zip(off, on):
         assert a.energy_inr == b.energy_inr
         assert a.wheeling_inr == b.wheeling_inr
@@ -222,7 +222,7 @@ def test_cross_subsidy_toggle_changes_only_that_column():
 def test_ageing_adder_reaches_the_buyers_bill():
     """C's adder is priced into the trade, not bolted on afterwards."""
     ageing = AgeingResult(states=[], adders={"DT-1": 1.5}, block=0)
-    agent = SettlementAgent(FEED.houses(), CONFIG)
+    agent = SettlementAgent(FEED.houses(), CONFIG, feed=FEED)
     _, buyer = agent.settle([Trade("T1", 0, "10006", "10000", 2.0, 4.0, 0.0)], ageing)
     assert buyer.ageing_inr == 3.0
     assert abs(sum(buyer.components) - buyer.net_inr) < 1e-9

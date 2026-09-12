@@ -28,7 +28,7 @@ FEED = WhitefieldFeed(CONFIG)
 def _run(blocks=None, config=CONFIG, persist=None, start_block=0):
     feed = WhitefieldFeed(config)
     pool = AgentPool(feed.houses(), config)
-    settlement = SettlementAgent(feed.houses(), config, consumers=pool.consumers)
+    settlement = SettlementAgent(feed.houses(), config, consumers=pool.consumers, feed=feed)
     runner = Runner(feed, pool, config, settlement=settlement, persist=persist,
                     start_block=start_block)
     summary = runner.run(blocks=blocks)
@@ -217,7 +217,7 @@ def test_full_run_with_every_module_wired():
     db = Persistence()
     feed = WhitefieldFeed(CONFIG)
     pool = AgentPool(feed.houses(), CONFIG)
-    settlement = SettlementAgent(feed.houses(), CONFIG, consumers=pool.consumers)
+    settlement = SettlementAgent(feed.houses(), CONFIG, consumers=pool.consumers, feed=feed)
     runner = Runner(feed, pool, CONFIG, health=_Health(), settlement=settlement,
                     persist=db)
     summary = runner.run()

@@ -26,6 +26,8 @@ TOPICS = (
     "reshape_applied",
     "fallback_curtailed",
     "ageing_applied",
+    "battery_moved",
+    "delivery_shortfall",
     "block_settled",
 )
 
