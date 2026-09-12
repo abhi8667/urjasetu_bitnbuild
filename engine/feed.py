@@ -29,6 +29,16 @@ from engine.config import Config, DEFAULT
 from engine.domain import House, MeterTick, Site, Transformer, TransformerSite
 
 BASE_DAY = date(2025, 9, 12)   # the one measured day in telemetry/
+
+
+class FeedValidationError(ValueError):
+    """The meter feed cannot support a complete run.
+
+    PRD §12: raise at startup during feed validation, never mid-run. A gap
+    discovered at block 400 has already cost four hundred blocks of compute and
+    leaves a half-written database; the same gap found before block 0 costs a
+    second and a clear message.
+    """
 PHASES = ("A", "B", "C")
 
 
@@ -49,6 +59,9 @@ class WhitefieldFeed:
         self._hubs = _read_csv(d / "telemetry" / "ev_charging_hubs.csv")
         self._weather = _read_csv(d / "telemetry" / "weather.csv")
         self._year = _read_csv(d / "bangalore_real_reference_2024.csv")
+        self._tick_cache: dict[int, list[MeterTick]] = {}
+        self._by_house_cache: dict[int, dict[str, MeterTick]] = {}
+        self._noise_cache: dict[tuple[str, int], tuple[float, float]] = {}
 
     # ------------------------------------------------------------ protocol
 
@@ -101,6 +114,17 @@ class WhitefieldFeed:
         return self._sites[house_id].transmission_loss_pct
 
     def ticks(self, block: int) -> list[MeterTick]:
+        """Memoised: every agent forecasting off this block would otherwise
+        rebuild all 64 ticks, once each, every block. MeterTick is frozen, so
+        handing out the same list is safe and nobody can mutate it."""
+        cached = self._tick_cache.get(block)
+        if cached is not None:
+            return cached
+        ticks = self._build_ticks(block)
+        self._tick_cache[block] = ticks
+        return ticks
+
+    def _build_ticks(self, block: int) -> list[MeterTick]:
         if not 0 <= block < self.total_blocks():
             raise IndexError(f"block {block} outside 0..{self.total_blocks() - 1}")
         hour = block % self.config.blocks_per_day
@@ -119,30 +143,152 @@ class WhitefieldFeed:
             ))
         return out
 
+    def tick_for(self, house_id: str, block: int) -> MeterTick:
+        """One premises' tick, without scanning the block."""
+        return self._by_house(block)[house_id]
+
+    def _by_house(self, block: int) -> dict[str, MeterTick]:
+        cached = self._by_house_cache.get(block)
+        if cached is None:
+            cached = {t.house_id: t for t in self.ticks(block)}
+            self._by_house_cache[block] = cached
+        return cached
+
     def forecast(self, house_id: str, block: int, horizon: int) -> list[MeterTick]:
-        """The agent's belief, not truth: truth plus seeded noise.
+        """The agent's belief, not truth: truth plus noise.
+
+        The noise is derived from (seed, house_id, block) rather than drawn from a
+        running RNG stream, which makes `forecast` a pure function: the same
+        (house, block) always returns the same belief, no matter how many times
+        or in what order it is called.
+
+        That matters more than it looks. With a shared stream, every call
+        advanced the RNG, so an agent calling forecast twice got two different
+        answers and D1 held only by accident — the moment C's flow agent also
+        called forecast, the sequence would shift and two runs of the same config
+        would diverge. Purity here makes determinism structural instead of lucky.
 
         forecast_noise_frac = 0.0 gives perfect foresight — acceptable for tests
         only, and the run summary must flag it (PRD §3.2).
         """
         out = []
+        frac = self.config.forecast_noise_frac
         for b in range(block, min(block + horizon, self.total_blocks())):
-            truth = next(t for t in self.ticks(b) if t.house_id == house_id)
-            f = self.config.forecast_noise_frac
-            if f == 0.0:
+            truth = self.tick_for(house_id, b)
+            if frac == 0.0:
                 out.append(truth)
                 continue
+            load_noise, gen_noise = self._belief_noise(house_id, b)
             out.append(MeterTick(
                 block=truth.block,
                 house_id=truth.house_id,
-                load_kwh=max(0.0, truth.load_kwh * (1 + self.rng.gauss(0, f))),
-                gen_kwh=max(0.0, truth.gen_kwh * (1 + self.rng.gauss(0, f))),
+                load_kwh=max(0.0, truth.load_kwh * (1 + load_noise * frac)),
+                gen_kwh=max(0.0, truth.gen_kwh * (1 + gen_noise * frac)),
                 ambient_c=truth.ambient_c,
             ))
         return out
 
+    def _belief_noise(self, house_id: str, block: int) -> tuple[float, float]:
+        """Two reproducible standard-normal-ish draws for this (house, block)."""
+        cached = self._noise_cache.get((house_id, block))
+        if cached is None:
+            stream = random.Random(f"{self.config.seed}:{house_id}:{block}")
+            cached = (stream.gauss(0, 1), stream.gauss(0, 1))
+            self._noise_cache[(house_id, block)] = cached
+        return cached
+
     def total_blocks(self) -> int:
         return self.config.blocks_per_day * self.config.days
+
+    # ---------------------------------------------------------- validation
+
+    def validate(self, sample_blocks: int | None = None) -> dict:
+        """Check the whole feed can support a complete run. Raises on the first
+        problem found, with enough detail to fix it.
+
+        "A run that starts must be able to finish" (PRD §12). Everything here is
+        a property that would otherwise surface as a KeyError, a silent zero, or
+        a physically impossible number somewhere in the middle of a 720-block
+        run — at which point the cause is many blocks behind the symptom.
+
+        Returns a summary of what it checked, so a caller can log that the feed
+        was actually verified rather than assumed.
+        """
+        houses = self.houses()
+        transformers = self.transformers()
+        total = self.total_blocks()
+
+        if total <= 0:
+            raise FeedValidationError(
+                f"feed covers {total} blocks; nothing could run")
+        if not houses:
+            raise FeedValidationError("feed has no premises")
+        if not transformers:
+            raise FeedValidationError("feed has no transformers")
+
+        known_transformers = {t.transformer_id for t in transformers}
+        for house in houses:
+            if house.transformer_id not in known_transformers:
+                raise FeedValidationError(
+                    f"premises {house.house_id} is on transformer "
+                    f"{house.transformer_id}, which the feed does not define "
+                    f"(known: {sorted(known_transformers)})")
+            if house.has_pv != (house.pv_kw > 0):
+                raise FeedValidationError(
+                    f"premises {house.house_id} has_pv={house.has_pv} but "
+                    f"pv_kw={house.pv_kw}")
+            if house.has_battery != (house.battery_kwh > 0):
+                raise FeedValidationError(
+                    f"premises {house.house_id} has_battery={house.has_battery} "
+                    f"but battery_kwh={house.battery_kwh}")
+            if house.retail_tariff <= 0:
+                raise FeedValidationError(
+                    f"premises {house.house_id} has no retail tariff")
+
+        expected = {h.house_id for h in houses}
+        blocks = range(total) if sample_blocks is None else range(
+            0, total, max(1, total // sample_blocks))
+
+        checked = 0
+        for block in blocks:
+            ticks = self.ticks(block)
+            seen = {t.house_id for t in ticks}
+            missing = expected - seen
+            if missing:
+                raise FeedValidationError(
+                    f"block {block} is missing {len(missing)} premises "
+                    f"(first few: {sorted(missing)[:5]}). A gap here would "
+                    f"surface mid-run as a KeyError.")
+            extra = seen - expected
+            if extra:
+                raise FeedValidationError(
+                    f"block {block} has readings for premises the registry does "
+                    f"not know: {sorted(extra)[:5]}")
+            for tick in ticks:
+                for name, value in (("load_kwh", tick.load_kwh),
+                                    ("gen_kwh", tick.gen_kwh),
+                                    ("ambient_c", tick.ambient_c)):
+                    if value != value:                      # NaN
+                        raise FeedValidationError(
+                            f"block {block}, premises {tick.house_id}: "
+                            f"{name} is NaN")
+                if tick.load_kwh < 0 or tick.gen_kwh < 0:
+                    raise FeedValidationError(
+                        f"block {block}, premises {tick.house_id}: negative "
+                        f"energy (load {tick.load_kwh}, gen {tick.gen_kwh})")
+                if not -50 <= tick.ambient_c <= 70:
+                    raise FeedValidationError(
+                        f"block {block}, premises {tick.house_id}: ambient "
+                        f"{tick.ambient_c} C is outside any plausible range")
+            checked += 1
+
+        return {
+            "blocks_checked": checked,
+            "blocks_total": total,
+            "premises": len(houses),
+            "transformers": len(transformers),
+            "complete": sample_blocks is None,
+        }
 
     # -------------------------------------------------------- construction
 

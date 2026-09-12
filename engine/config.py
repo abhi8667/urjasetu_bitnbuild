@@ -5,8 +5,28 @@ not literals in code (PRD §6.7).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import os
+from dataclasses import dataclass as _stdlib_dataclass, field, fields
 from pathlib import Path
+
+# PRD §8 asks for a pydantic model. DECISIONS.md D7 commits the engine to
+# running on a clean machine with nothing installed. Both hold: pydantic's
+# dataclass is a drop-in that keeps dataclasses.replace() and fields() working
+# and adds validation, and when it is absent the stdlib dataclass takes over
+# unchanged. Validation is a bonus when available, never a dependency.
+try:
+    from pydantic.dataclasses import dataclass as _dataclass
+    PYDANTIC_AVAILABLE = True
+except ImportError:                                     # pragma: no cover
+    _dataclass = _stdlib_dataclass
+    PYDANTIC_AVAILABLE = False
+
+try:
+    import yaml
+    YAML_AVAILABLE = True
+except ImportError:                                     # pragma: no cover
+    yaml = None
+    YAML_AVAILABLE = False
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
@@ -28,7 +48,7 @@ def _rating_kva() -> dict[str, float]:
     return {"DT-1": 125.0, "DT-2": 63.0, "DT-3": 63.0, "DT-4": 63.0}
 
 
-@dataclass(frozen=True)
+@_dataclass(frozen=True)
 class Config:
     # -- determinism -------------------------------------------------------
     seed: int = 20250912
@@ -53,8 +73,16 @@ class Config:
     rating_kva: dict[str, float] = field(default_factory=_rating_kva)
     include_ev_hubs_as_houses: bool = True  # the 4 shared hubs load their DT
 
+    # -- forecasting -------------------------------------------------------
+    forecast_alpha: float = 0.3      # EWMA weight on the most recent same-hour day
+    forecast_blend: float = 0.5      # own EWMA vs the feed's forecast
+    forecast_history_days: int = 7
+
     # -- market ------------------------------------------------------------
     min_order_kwh: float = 0.10
+    # KERC P2P Solar Energy Transaction Regulations 2024: energy cannot be
+    # routed meter-to-meter across transformers, so each DT clears its own book.
+    enforce_same_transformer: bool = True
     max_bid_kwh_per_block: float = 3.0   # keeps buyers competing for scarce surplus
 
     # -- grid limits -------------------------------------------------------
@@ -74,6 +102,15 @@ class Config:
     platform_fee: float = 0.25
     gst_pct: float = 5.0
     feed_in_tariff: float = 2.25
+    # How the counterfactual credits exported surplus.
+    #   "one_for_one" offsets kWh against consumption, worth the full retail
+    #     tariff. This IS net metering, and it is the scheme the project argues
+    #     against, so it is the default.
+    #   "feed_in" pays the KERC rate the dataset records (Rs2.25/kWh), which is
+    #     closer to gross metering.
+    # The choice flips who wins: see DECISIONS.md D13. It is a pitch decision,
+    # not a tuning knob.
+    baseline_export_credit: str = "one_for_one"
     cross_subsidy: float = 0.0
     cross_subsidy_enabled: bool = False
     credit_carryforward_blocks: int = 8760   # 12 months of hourly blocks
@@ -90,6 +127,115 @@ class Config:
     # -- feed --------------------------------------------------------------
     data_dir: Path = DATA_DIR
     forecast_noise_frac: float = 0.10    # 0.0 == perfect foresight, test only
+
+
+#: Where load_config() looks when given no explicit path.
+CONFIG_YAML = Path(__file__).resolve().parent.parent / "config.yaml"
+
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _coerce(name: str, value):
+    """YAML gives strings and lists where the model wants paths and tuples.
+
+    A relative data_dir resolves against the repo root, so the shipped
+    config.yaml stays portable — an absolute path baked in on one machine would
+    fail on every other one.
+    """
+    if name == "data_dir":
+        path = Path(value)
+        return path if path.is_absolute() else (_REPO_ROOT / path)
+    if name == "evening_blocks" and isinstance(value, list):
+        return tuple(value)
+    return value
+
+
+def load_config(path: str | Path | None = None, **overrides) -> "Config":
+    """Build a Config from config.yaml, falling back to the declared defaults.
+
+    Invariant CF1: the engine starts and completes a full run with the shipped
+    defaults and zero arguments. That holds in every combination — no yaml
+    module, no config.yaml, an empty config.yaml, or a partial one. A file that
+    is present but unreadable raises rather than silently running on defaults,
+    because a config someone edited and expected to take effect is worse than
+    no config at all.
+    """
+    values: dict = {}
+    target = Path(path) if path is not None else CONFIG_YAML
+    if path is not None and not target.exists():
+        raise FileNotFoundError(f"config file not found: {target}")
+
+    if YAML_AVAILABLE and target.exists():
+        loaded = yaml.safe_load(target.read_text()) or {}
+        if not isinstance(loaded, dict):
+            raise ValueError(f"{target} must contain a mapping at the top level")
+        known = {f.name for f in fields(Config)}
+        unknown = set(loaded) - known
+        if unknown:
+            raise ValueError(
+                f"{target} has keys the engine does not recognise: "
+                f"{sorted(unknown)}. A typo in a config key would otherwise run "
+                f"silently on the default.")
+        values = {k: _coerce(k, v) for k, v in loaded.items()}
+
+    values.update(overrides)
+    config = Config(**values)
+    _validate(config)
+    return config
+
+
+def _validate(config: "Config") -> None:
+    """Range checks that hold with or without pydantic.
+
+    pydantic validates types; nothing validates that a loading limit of -3 is
+    nonsense. These are the bounds that would produce a silently wrong run
+    rather than a crash.
+    """
+    problems = []
+    if config.block_minutes <= 0 or 1440 % config.block_minutes:
+        problems.append(f"block_minutes={config.block_minutes} must divide 1440")
+    if config.days <= 0:
+        problems.append(f"days={config.days} must be positive")
+    if not 0 < config.loading_limit <= 2:
+        problems.append(f"loading_limit={config.loading_limit} outside (0, 2]")
+    if not 0 < config.derate_factor <= 1:
+        problems.append(f"derate_factor={config.derate_factor} outside (0, 1]")
+    if not 0 < config.round_trip_efficiency <= 1:
+        problems.append(
+            f"round_trip_efficiency={config.round_trip_efficiency} outside (0, 1]")
+    if not 0 <= config.forecast_noise_frac < 1:
+        problems.append(
+            f"forecast_noise_frac={config.forecast_noise_frac} outside [0, 1)")
+    if config.baseline_export_credit not in ("one_for_one", "feed_in"):
+        problems.append(
+            f"baseline_export_credit={config.baseline_export_credit!r} must be "
+            f"'one_for_one' or 'feed_in'")
+    if not config.rating_kva:
+        problems.append("rating_kva is empty — no transformer would be rated")
+    if problems:
+        raise ValueError("invalid configuration: " + "; ".join(problems))
+
+
+def to_yaml(config: "Config" = None) -> str:
+    """Serialise a config as YAML, for regenerating the shipped config.yaml."""
+    config = config or Config()
+    out = {}
+    for f in fields(config):
+        value = getattr(config, f.name)
+        if isinstance(value, Path):
+            # Relative to the repo where possible, so the file works on any
+            # machine rather than only the one that generated it.
+            try:
+                value = str(value.relative_to(_REPO_ROOT))
+            except ValueError:
+                value = str(value)
+        elif isinstance(value, tuple):
+            value = list(value)
+        out[f.name] = value
+    if not YAML_AVAILABLE:
+        raise RuntimeError("PyYAML is required to serialise a config")
+    return yaml.safe_dump(out, sort_keys=True, default_flow_style=False)
 
 
 DEFAULT = Config()

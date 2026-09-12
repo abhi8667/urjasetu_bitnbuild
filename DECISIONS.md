@@ -92,6 +92,41 @@ tests/test_feed_contracts.py` at hour 0 without installing anything. D brings
 `scipy` in with the real LP; B swaps `Config` to pydantic when validation
 earns its keep. Neither changes a signature.
 
+### D7a — pydantic and YAML are optional, which is how §8 and D7 both hold
+
+PRD §8 asks for "a single `config.yaml`, loaded into a `pydantic` model". D7
+above commits the engine to running on a machine with nothing installed. Those
+pull against each other, and the resolution is that neither package is a
+dependency:
+
+- `Config` is declared with `pydantic.dataclasses.dataclass` when pydantic is
+  importable and the stdlib `dataclass` when it is not. The pydantic version is
+  a genuine drop-in — `dataclasses.replace()` and `fields()` both keep working,
+  which matters because every test and scenario in this repo uses `replace()`.
+  A `pydantic.BaseModel` would have broken all of them.
+- `config.yaml` is read when PyYAML is importable and the file exists. Absent
+  either, the declared defaults apply unchanged.
+
+CF1 therefore holds in all four combinations, and the no-packages case — the
+one a teammate has on a fresh clone — is asserted in a subprocess with both
+imports blocked rather than assumed.
+
+Two things the file does beyond §8, because the failure mode is silent:
+
+- An **unrecognised key raises**. A typo like `loadng_limit: 0.9` would
+  otherwise be ignored and the run would proceed on the default, looking
+  correct.
+- **Range validation runs with or without pydantic.** pydantic checks types;
+  nothing checks that `loading_limit: -1` is nonsense. The bounds covered are
+  those that produce a silently wrong run rather than a crash.
+
+`data_dir` is stored relative and resolved against the repo root — an absolute
+path baked in by whoever generated the file would fail on every other machine.
+
+The conversion changed no computed value: a 30-day run before and after is
+identical to the digit (5,582 trades, 4,511.5 kWh, ₹4.76 mean clearing price,
+25.1 h of transformer life saved).
+
 ### D8 — The feed's RNG is separate from the engine's
 
 PRD §3.4 wants one seeded `numpy.random.Generator` on the tick path. The feed's
@@ -152,3 +187,230 @@ on the compare screen will be modest. `data/scripts/device_registry.py:88`
 Gate that on the hour-24 compare numbers, not on a hunch. It re-rolls all five
 telemetry files and invalidates the tuned ratings, breach counts and tariffs
 recorded above — budget an hour for the re-tune, and do it once.
+
+### D14 — The ageing adder prices average wear per kWh delivered, not marginal wear
+
+PRD §6.6 defines the adder from `loss_hours(with_trades) - loss_hours(without_trades)`.
+That quantity is **identically zero** in this model and cannot be otherwise: a
+P2P trade is a financial contract between two premises on one transformer and
+moves no power that was not already flowing. C's health agent encoded this
+honestly — `load_with_kw = base_kw` and `load_without_kw = base_kw` — and the
+adder was exactly ₹0.0000/kWh on every transformer for every block.
+
+The adder now prices the **average** wear on the delivering transformer:
+
+```
+adder = (loss_of_life_hours_this_block / rated_life_hours)
+        * replacement_cost_inr / kWh_delivered_on_that_transformer
+```
+
+The divisor is DT throughput, not traded kWh. Every loading breach on this
+street falls in 18:00–21:00, when no trade clears at all, so a traded-kWh
+divisor zeroes the adder precisely when the iron is being hurt most. F_AA is
+exponential in hot-spot temperature, so the signal still climbs steeply exactly
+when it should: ₹0.001/kWh on a cool transformer, ₹0.022/kWh on the hottest.
+
+**Known limitation, state it before a judge does.** Trading happens 09:00–15:00
+and stress happens 18:00–21:00, so the two are temporally disjoint on this
+street and a per-kWh settlement charge collects only ₹0.71 over 30 days. The
+signal is real and correctly signed, but it is not yet what changes behaviour —
+the battery reserve policy (D15) is. Connecting them properly means making the
+*forward* evening adder an input to the prosumer's store-or-sell decision, which
+is a design change, not a tuning knob.
+
+### D15 — Daylight surplus is reserved to discharge into the evening peak
+
+`strategy.battery_reserve_frac` (0.20) of each battery-equipped premises'
+forecast surplus is held back from the market and stored in its own battery.
+The flow agent discharges it when a loading breach appears.
+
+Without this the reshape has a lever with nothing behind it: selling every kWh
+at midday leaves the batteries empty at 19:00, which is the only hour the
+transformers are actually in trouble. Own-battery only — no claims, no custody —
+so this path cannot break FL4.
+
+Measured over 30 days: 61 kWh stored across the eight batteries, 43 reshapes
+applied where there were previously 0, and **24.0 hours of transformer life
+saved (3.9%)** against the unprotected net-metering baseline. That is the first
+non-zero value the project's central claim has ever produced.
+
+### D16 — Loading is measured in kVA everywhere, at one power factor
+
+The sentinel, the flow agent's LP limits, the health agent and the baseline all
+now divide net kW by the same `POWER_FACTOR = 0.95`. They did not: the LP's
+limit was 5% looser than the sentinel's, so a reshape came back feasible while
+the re-check still breached; and the health agent measured in kW while the
+baseline measured in kVA, which compounded through the exponential F_AA into a
+2× discrepancy in loss of life between the two sides of a comparison that is
+only meaningful apples to apples.
+
+If one of these changes, all four change together.
+
+### D17 — The reshape LP was solving the wrong problem: its config override never fired
+
+`algo/reshape_lp.py` resolved its constants through
+
+```python
+from engine import config as _cfg
+def _cfg_get(name, default):
+    return getattr(_cfg, name, default)
+```
+
+`_cfg` is the config **module**, which has no attribute called
+`RESHAPE_BLOCK_HOURS` or `RESHAPE_VOLTAGE_BAND` — those live on the `Config`
+**instance**, under different names. So every lookup fell through to its
+hardcoded default, silently, from the day it was written. The LP ran on:
+
+| Constant | LP used | Engine config | Effect |
+|---|---|---|---|
+| `BLOCK_HOURS` | 0.25 | 1.0 | battery bound `max_kw * 0.25` = **a quarter of the real one** |
+| `VOLTAGE_BAND` | 0.05 | 0.06 | tighter band than the sentinel enforces |
+| `LOADING_LIMIT` | 0.90 | 1.0 | (harmless — genuinely read from `limits`) |
+
+`BLOCK_HOURS = 0.25` is the 15-minute block from before D2, the same stale
+literal already found in the thermal model.
+
+`block_hours` and `voltage_band` are now carried on `ReshapeLimits` and read
+per call, so there is one source of truth. The module constants remain only as
+a fallback for a caller that passes nothing.
+
+**The fix reduces the reshape success count and that is the correct direction.**
+Over a 30-day run at the default derate:
+
+| | reshapes applied | fallbacks | discharged | transformer life |
+|---|---|---|---|---|
+| Before (stale 0.25) | 43 | 73 | 69.6 kWh | 595.2 h |
+| After (correct 1.0) | 24 | 61 | **140.2 kWh** | **594.1 h** |
+
+The old code "succeeded" more often because a 1.25 kWh battery bound is
+trivially satisfiable and barely moves the loading. The corrected LP attempts
+the real problem, succeeds less often, and moves twice the energy when it does.
+
+### D18 — Most loading breaches on this street are genuinely unreshapable, and that is the honest answer
+
+At a 60% derate, 84 of 261 loading breaches return `feasible=False`. Every one
+was audited against the discharge its transformer's batteries actually had at
+that moment, and every one had an overload beyond what those batteries could
+cover. The refusals are physics, not a formulation bug.
+
+Two structural reasons, both already recorded above:
+
+- Loading breaches fall in 18:00–21:00 (D1), when **no trade clears at all** —
+  so trade curtailment, the LP's other lever, has nothing to work with. Battery
+  discharge is the only instrument available.
+- Eight batteries at 5 kWh per block of discharge, spread across four
+  transformers, cannot absorb a 23 kW mean overload.
+
+`tests/test_breach_resolution.py` therefore reports the reshape/fallback split
+at three derate levels rather than a single "resolved" tick. PRD §10.6 as
+written is close to unfalsifiable — `fallback_curtail` computes a retention
+fraction that lands exactly on the limit, so it always resolves — and it passed
+while the LP contributed nothing at all.
+
+### D19 — Persistence writes are atomic per block, retried once, then fatal
+
+PRD §12 specifies "SQLite write failure → retry once, then raise — do not
+continue with unpersisted state". Neither half existed: there was no retry and
+no exception handling anywhere in `persistence.py`.
+
+The atomicity half was the more dangerous one and was not obvious from the
+spec line. `write_block` issued four separate `executemany` calls and then
+committed, with a nested `save_transformer_state` **committing partway
+through**. A failure mid-block therefore left some tables written and others
+not — and because the connection kept an open transaction, the *next* block's
+commit would sweep those leftovers in alongside its own. "Do not continue with
+unpersisted state" has to mean a block lands whole or not at all.
+
+Every write now runs as one transaction through `_atomic()`, using
+`with self.db` so a failed attempt rolls back and leaves nothing behind.
+`transformer_state` is appended to that same statement list rather than
+committed separately: it is the only table that survives a restart, and PS1
+(resume with no gap and no double count) depends on it being exactly level with
+the block it describes, never ahead or behind.
+
+Retry policy follows the same rule the flow agent learned the hard way:
+
+- **Retried once** — `OperationalError`, `DatabaseError`. Locked, busy, a disk
+  hiccup. Two attempts total, never an unbounded loop against a disk that is
+  genuinely gone.
+- **Never retried** — `ProgrammingError`, `IntegrityError`, `InterfaceError`,
+  `NotSupportedError`. Bad SQL or a violated constraint is a bug; retrying one
+  hides it briefly and then reports the wrong cause.
+
+After two failures, `PersistenceError` is raised with the original exception
+chained. `Persistence.retries_used` counts second attempts — nonzero is not a
+failure, but a run that quietly retried a hundred times is telling you
+something about the disk.
+
+`tests/test_persistence_failures.py` forces each case rather than assuming it:
+a transient failure that recovers, a permanent one that raises, exactly two
+attempts, a programming error surfacing unretried on the first attempt, a
+partial block write leaving all four tables empty, and a genuinely read-only
+database on disk.
+
+### D20 — The feed is validated in full before block 0
+
+PRD §12: "Meter feed gap → raise at startup during feed validation, not
+mid-run", and "the engine validates the entire meter feed before block 0. A run
+that starts must be able to finish."
+
+No validation existed. A gap surfaced as a `KeyError` at whatever block it
+happened to hit — block 400, say — by which point four hundred blocks of
+compute are spent, the database holds a partial run, and the cause is hundreds
+of blocks behind the symptom.
+
+`WhitefieldFeed.validate()` now checks the whole feed and raises
+`FeedValidationError` on the first problem, with the block, the premises and
+what was wrong. It covers the defects that would otherwise appear mid-run as a
+crash, a silent zero, or a physically impossible number:
+
+- a premises missing from any block, or a reading for one the registry does not
+  know
+- negative energy, NaN, an ambient temperature outside [-50, 70] °C
+- a premises on a transformer the feed does not define
+- equipment flags contradicting their capacities (`has_pv` with `pv_kw = 0`)
+- a zero retail tariff, an empty premises list, a zero-block feed
+
+**Entire, not sampled.** Checking all 720 blocks costs **0.12 s**, which is
+cheap enough that there is no argument for sampling — and it warms the feed's
+tick cache, so the run that follows is faster for having been validated.
+
+`Runner` calls it before block 0 and records the report on
+`runner.feed_validation`, so a run can show that its feed was verified rather
+than assumed. `validate_feed=False` exists for tests that deliberately drive a
+partial or stub feed, and is the only way to skip it.
+
+### D21 — Topology independence (§10.9) is deliberately scoped out, not overlooked
+
+PRD §10.9 asks for a full run at `n_transformers` set to 1, 2 and 4 without
+code changes. **We are not doing this, by decision, and the reason is the
+dataset rather than the engine.**
+
+What is actually true, and was verified rather than assumed:
+
+- **No module assumes a transformer count.** Every one iterates whatever the
+  registry provides. The only place `DT-1..DT-4` appears in `engine/` or
+  `grid/` is the default value of `config.rating_kva` — a config default, not
+  logic. A run with one, two or four entries in that dict completes
+  identically, with unlisted transformers falling back to their registry
+  ratings.
+- **The shipped dataset is fixed at four transformers and sixty premises.**
+  `data/` is locked (see the top of `data/README.md`). There is no
+  one-transformer feed to run against, and the transformer count comes from
+  the registry, not from configuration.
+
+Satisfying §10.9 literally would therefore mean fabricating a synthetic feed
+whose only purpose is to exercise a code path we can already show is
+count-agnostic, or building an adapter that repartitions sixty real premises
+onto fewer transformers and re-derives their losses, phases and ratings. Both
+add a second topology to maintain, and neither makes the demo better or the
+physics more honest.
+
+**So the engine ships at 9 of 10 integration checks, with this one waived.**
+That is a scoping decision, recorded here so it is answerable rather than
+discovered. The honest sentence, if asked: *the engine is topology-independent
+— nothing in it assumes four transformers — but the dataset we validate against
+has four, so that is the topology we claim.*
+
+If a second topology ever becomes genuinely useful, D21 is the entry to revisit,
+and the work is a `MeterFeed` implementation, not a change to any agent.
