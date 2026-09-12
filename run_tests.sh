@@ -47,6 +47,7 @@ echo "  TRACK B — market, agents, money"
 run "phase 1  bus, market, tick loop"          tests/test_phase1_market_loop.py
 run "phase 2  prosumer, consumer, settlement"  tests/test_phase2_agents_money.py
 run "phase 3+4 persistence, baseline, compare" tests/test_phase34_persistence_baseline.py
+run "persistence failure handling (§12)"       tests/test_persistence_failures.py
 
 echo
 echo "  TRACK C — grid protection"
