@@ -58,7 +58,8 @@ class Runner:
                  config: Config = DEFAULT, bus: Bus | None = None,
                  sentinel: Sentinel | None = None, flow: Flow | None = None,
                  health: Health | None = None, settlement: Settlement | None = None,
-                 batteries: Any = None, persist=None, start_block: int = 0):
+                 batteries: Any = None, persist=None, start_block: int = 0,
+                 include_baseline: bool = True):
         self.feed = feed
         self.orders = orders
         self.config = config
@@ -72,6 +73,8 @@ class Runner:
         self.persist = persist
         # Resume support (PS1): a run that died at block N restarts here.
         self.start_block = start_block
+        self.include_baseline = include_baseline
+        self.summary: dict | None = None
         self.tick_durations_ms: list[float] = []
 
     def _charge_batteries(self, block: int) -> dict[str, float]:
@@ -100,7 +103,40 @@ class Runner:
             started = time.perf_counter()
             self._tick(block, summary)
             self.tick_durations_ms.append((time.perf_counter() - started) * 1000)
-        return summary.finalise(self.config, total - self.start_block)
+        self.summary = summary.finalise(
+            self.config, total - self.start_block,
+            settlement=self.settlement, health=self.health,
+            baseline=self._baseline_figures(total))
+        return self.summary
+
+    def _baseline_figures(self, total: int) -> dict | None:
+        """The counterfactual's numbers, alongside P2P's own. PRD §10 asks for
+        "the same figures for the baseline path" — without them the summary
+        states a result with nothing to compare it against."""
+        if not self.include_baseline:
+            return None
+        from engine.sim.baseline import Baseline
+        result = Baseline(self.feed, self.config).run(blocks=total)
+        return {
+            "label": result.label,
+            "household_bills_inr": result.household_bills_inr,
+            "discom_energy_revenue_inr": result.discom_energy_revenue_inr,
+            "discom_charge_revenue_inr": result.discom_charge_revenue_inr,
+            "export_credits_inr": result.export_credits_inr,
+            "loss_of_life_hours_total": result.loss_of_life_hours,
+        }
+
+    def write_run_summary(self, path="run_summary.json") -> str:
+        """Emit the summary as JSON. Sorted keys, so two identical runs produce
+        byte-identical files (D1)."""
+        import json
+        summary = getattr(self, "summary", None)
+        if summary is None:
+            raise RuntimeError("run() must complete before writing a summary")
+        with open(path, "w") as fh:
+            json.dump(summary, fh, indent=2, sort_keys=True)
+            fh.write("\n")
+        return path
 
     @property
     def median_tick_ms(self) -> float:
@@ -141,6 +177,7 @@ class Runner:
         breach = self.sentinel.check(result.trades, ticks) if self.sentinel else None
 
         if breach is not None:
+            summary.record_breach(breach.kind)
             self.bus.publish("breach_detected", block, "sentinel", {
                 "transformer_id": breach.transformer_id,
                 "kind": breach.kind,
@@ -160,6 +197,7 @@ class Runner:
                 if plan.feasible:
                     result = self.market.clear(block, plan.constrained_orders)
                     passes += 1
+                    summary.reshapes_applied += 1
                     self.bus.publish("reshape_applied", block, "flow", {
                         "trades": len(result.trades),
                         "battery_charges": len(plan.battery_charges),
@@ -181,6 +219,7 @@ class Runner:
                     # P1: the second failed check is final. fallback_curtail is
                     # unconditional and always succeeds — no third pass, ever.
                     result.trades[:] = self.flow.fallback_curtail(result.trades, breach)
+                    summary.fallbacks += 1
                     self.bus.publish("fallback_curtailed", block, "flow", {
                         "transformer_id": breach.transformer_id,
                         "trades": len(result.trades),
@@ -191,6 +230,8 @@ class Runner:
         # market and discharging inside the reshape, so nothing downstream
         # could otherwise see both halves of the battery term.
         discharged_now = dict(getattr(plan, "battery_discharges", {}) or {}) if plan else {}
+        summary.battery_charged_kwh += sum(stored_now.values())
+        summary.battery_discharged_kwh += sum(discharged_now.values())
         if stored_now or discharged_now:
             self.bus.publish("battery_moved", block, "runner", {
                 "charged_kwh": {k: round(v, 9) for k, v in sorted(stored_now.items())},
@@ -214,6 +255,7 @@ class Runner:
         # which is the natural economic consequence of a bad forecast.
         result.trades[:], shortfalls = _reconcile_delivery(
             result.trades, settled_ticks, discharged_now, self.config)
+        summary.delivery_shortfall_kwh += sum(shortfalls.values())
         if shortfalls:
             self.bus.publish("delivery_shortfall", block, "runner", {
                 "sellers": len(shortfalls),
@@ -345,6 +387,15 @@ class _Accumulator:
         self.prices: list[float] = []
         self.blocks_with_trades = 0
         self.reshaped_blocks = 0
+        self.breaches_by_kind: dict[str, int] = {}
+        self.reshapes_applied = 0
+        self.fallbacks = 0
+        self.battery_charged_kwh = 0.0
+        self.battery_discharged_kwh = 0.0
+        self.delivery_shortfall_kwh = 0.0
+
+    def record_breach(self, kind: str) -> None:
+        self.breaches_by_kind[kind] = self.breaches_by_kind.get(kind, 0) + 1
 
     def record(self, block, ticks, orders, result, passes) -> None:
         self.blocks += 1
@@ -360,8 +411,16 @@ class _Accumulator:
         if passes > 1:
             self.reshaped_blocks += 1
 
-    def finalise(self, config: Config, total: int) -> dict:
-        return {
+    def finalise(self, config: Config, total: int, settlement=None, health=None,
+                 baseline: dict | None = None) -> dict:
+        """The artifact PRD §10 requires at the end of every run.
+
+        Every field it names is here, and nothing wall-clock is: D1 requires two
+        identical runs to produce this byte-identical, so timing lives on
+        `Runner.median_tick_ms` instead. Every dict is sorted so serialisation
+        order cannot drift either.
+        """
+        summary = {
             "blocks": self.blocks,
             "block_minutes": config.block_minutes,
             "days": round(total / config.blocks_per_day, 4),
@@ -374,6 +433,13 @@ class _Accumulator:
                 100 * self.volume_kwh / self.load_kwh, 4) if self.load_kwh else 0.0,
             "blocks_with_trades": self.blocks_with_trades,
             "reshaped_blocks": self.reshaped_blocks,
+            "breaches_by_kind": dict(sorted(self.breaches_by_kind.items())),
+            "breaches_total": sum(self.breaches_by_kind.values()),
+            "reshapes_applied": self.reshapes_applied,
+            "fallback_curtailments": self.fallbacks,
+            "battery_charged_kwh": round(self.battery_charged_kwh, 6),
+            "battery_discharged_kwh": round(self.battery_discharged_kwh, 6),
+            "delivery_shortfall_kwh": round(self.delivery_shortfall_kwh, 6),
             "mean_clearing_price_inr": round(
                 sum(self.prices) / len(self.prices), 4) if self.prices else None,
             "seed": config.seed,
@@ -381,3 +447,24 @@ class _Accumulator:
             # run summary must say so (PRD §3.2).
             "perfect_foresight": config.forecast_noise_frac == 0.0,
         }
+
+        if settlement is not None:
+            delivered = sum(l.quantity_kwh for l in settlement.ledger
+                            if l.role == "buyer")
+            summary["delivered_kwh"] = round(delivered, 6)
+            summary["transmission_loss_kwh"] = round(
+                sum(l.loss_kwh for l in settlement.ledger), 6)
+            summary["discom_charge_revenue_inr"] = round(
+                settlement.charges_collected, 6)
+            summary["bill_lines"] = len(settlement.ledger)
+
+        if health is not None:
+            life = getattr(health, "_cumulative_life_hours", {})
+            summary["loss_of_life_hours"] = {
+                k: round(v, 9) for k, v in sorted(life.items())}
+            summary["loss_of_life_hours_total"] = round(sum(life.values()), 9)
+
+        if baseline is not None:
+            summary["baseline"] = baseline
+
+        return summary
