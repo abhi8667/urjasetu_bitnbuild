@@ -77,3 +77,35 @@ main { grid-column: 2; min-width: 0; }.key-rail { grid-column: 2; display: flex;
 @media (max-width: 1250px) { .camera-hint { bottom: 16px; }.scene-layers { bottom: 91px; }.scene-toolbar { top: 111px; left: 18px; right: auto; }.node-picker { top: 150px; }.city-canvas { inset: 145px 0 64px !important; height: calc(100% - 209px) !important; }.control-bar { bottom: 41px; } }
 @media (max-width: 760px) { .city-stage { height: 540px; }.trace-panel { height: 320px; }.scene-toolbar { top: 86px; left: auto; right: 14px; }.node-picker { top: 87px; }.city-canvas { inset: 122px 0 84px !important; height: calc(100% - 206px) !important; } }
 @media (max-width: 480px) { .scene-toolbar { top: 112px; left: 16px; right: auto; }.node-picker { top: 151px; left: 16px; }.city-canvas { inset: 173px 0 97px !important; height: calc(100% - 270px) !important; }.scene-layers { bottom: 90px; left: 16px; }.control-bar { bottom: 42px; }.camera-hint { bottom: 20px; }.map-label { font-size: 8px; padding: 4px; gap: 4px; }.map-label span { font-size: 8px; padding-left: 4px; } }
+
+/* Night-grid treatment: the map is the product, the surrounding UI stays quiet. */
+:root {
+  --ground: #060b13; --ground-raised: #121b29; --rule: #202d3e; --ink: #e7edf9; --ink-quiet: #93a2b9;
+  --export: #42e5bb; --import: #37adff; --curtailed: #ffb84d; --idle: #5c6b80; --stress: #ff5e6c;
+  --teal: #42e5bb; --sidebar: #090f19; --soft: #101a28; --map-ground: #070d16;
+  --city-road: #1b2940; --city-lawn: #123126; --city-leaf: #174538; --city-leaf-light: #2a6951;
+  --city-trunk: #4a5260; --city-glass: #65bdf0; --city-solar: #326fd2; --city-solar-grid: #9bd7ff;
+  --city-wall: #435a80; --city-wall-warm: #6b5366; --city-roof: #263956; --city-metal: #71839c; --city-stripe: #ffe19a;
+  color: var(--ink); background: var(--ground);
+}
+body { background: radial-gradient(circle at 65% 10%, #10233a 0, var(--ground) 38%); }
+.app-shell { background: transparent; grid-template-columns: 214px minmax(0, 1fr); grid-template-rows: 70px 1fr 34px; }
+.topbar { background: linear-gradient(180deg, #0a111c, #060b13); border-right: 1px solid #182536; padding-top: 25px; }
+.brand-mark { color: var(--export); filter: drop-shadow(0 0 10px #42e5bb66); }.brand strong { color: #f0f5ff; }.brand small, .workspace-label { color: #71829d; }
+.nav-item { color: #91a0b7; }.nav-item.active { background: #14243a; color: #e8f3ff; box-shadow: inset 2px 0 var(--export); }.nav-item.active kbd { color: var(--export); }.nav-item:hover:not(.active) { background: #101d2e; }
+.sidebar-story { border-top: 1px solid #1b293a; }.solar-symbol { border-color: #28595a; color: var(--export); }.sidebar-story p, .sidebar-story > span, .workspace-location small { color: #71829d; }.workspace-location { border-color: #1b293a; }
+.workspace-top { background: #080e17eF; border-color: var(--rule); backdrop-filter: blur(12px); }.operator-avatar { background: #182a43; color: #cce3ff; }
+.replay-button, .control-bar button, .household-selector select { background: #121d2c; border-color: #2a3b51; color: var(--ink); }
+.city-screen { padding: 24px 28px 18px; gap: 18px; grid-template-columns: minmax(0, 1fr) 264px; }
+.overview-heading h1 { font-size: clamp(26px, 2.6vw, 39px); color: #f0f5ff; }.overview-heading h1 span { color: var(--export); }.date-chip { background: #0e1825; border: 1px solid var(--rule); padding: 9px 12px; border-radius: 8px; }
+.metric-strip { gap: 10px; }.metric-strip > div, .transformer-card { min-height: 92px; padding: 14px 16px; border-color: #1c2b3d; border-radius: 9px; background: linear-gradient(135deg, #101a28, #0b121d); }.metric-strip > div:first-child { background: linear-gradient(135deg, #112a2c, #0b171d); border-color: #1b4645; }.metric-strip > div::after { color: var(--export); }.metric-strip strong { font-size: 25px; }.metric-strip small { color: #71829d; }
+.city-stage { height: 650px; border-color: #263750; border-radius: 12px; background: #060b13; box-shadow: 0 24px 50px #0008; }.city-canvas { inset: 93px 0 58px !important; height: calc(100% - 151px) !important; }
+.city-heading { top: 18px; left: 20px; }.city-heading h2 { color: #eff7ff; font-size: 18px; }.city-heading p, .legend, .camera-hint { color: #8495ad; }.legend { top: 23px; right: 18px; }.export-swatch { background: var(--export); box-shadow: 0 0 8px var(--export); }.import-swatch { background: var(--import); box-shadow: 0 0 8px var(--import); }
+.scene-toolbar { top: 58px; border-color: #30425a; background: #0c1523ed; }.scene-toolbar button { color: #91a0b7; }.scene-toolbar button[aria-pressed="true"] { background: #173350; color: #f0f7ff; }.node-picker { top: 59px; border-color: #30425a; background: #0c1523ed; color: #c0cede; }.scene-layers { bottom: 15px; }.scene-layers button { background: #0c1523ef; border-color: #30425a; color: #aab8ca; }.scene-layers button[aria-pressed="true"] { color: #e9f7f5; border-color: #397979; }
+.control-bar { bottom: 14px; }.control-bar button .icon { color: var(--export); }.control-bar button small { color: #71829d; }.asset-inspector { background: #101a28f2; border-color: #31435b; box-shadow: 0 15px 35px #0008; }.asset-inspector span, .asset-inspector small { color: #8ea0b8; }
+.trace-panel { height: 650px; background: linear-gradient(180deg, #0e1724, #0a111c); border-color: #1d2c3f; }.agent-status { background: #102631; color: var(--export); }.agent-status small { color: #8eabb0; }.trace-lines p { color: #8291a8; border-color: #1c2a3c; }.trace-lines p > span { color: #dce8f7; }.trace-lines p > span small, .trace-footer { color: #8190a6; }.live-badge { border-color: #2a3a50; color: var(--export); }.trace-footer { border-color: #1c2a3c; }
+.transformer-card { background: #0e1724; }.transformer-icon { background: #142537; color: var(--import); }.health-pill { background: #12342f; color: var(--export); }.bar, .progress-track { background: #1a2a3d; }.bar i, .progress-track i { background: var(--import); }
+.key-rail { border-top: 1px solid #152334; color: #687890; }.key-rail kbd { border-color: #26384f; }.map-label { color: #eaf2ff; background: #101a28eF; border-color: #39506b; box-shadow: 0 4px 12px #0008; }.map-label span { border-color: #2d4057; color: var(--export); }.selected-map-label { background: #123b52; }
+.secondary-screen { color: var(--ink); }.compare-table, .fleet-table, .message-panel, .household-controls { background: #0e1724; border-color: var(--rule); }.compare-head, .fleet-head { background: #111e2e; }.earnings-figure, .ledger-topline > div { background: #112a2c; }.agent-chip { background: #0e1724; border-color: var(--rule); }.agent-chip.active, .dial-options button.active { background: #173350; border-color: #275475; }.dial-options { background: #101a28; }
+@media (max-width: 1250px) { .city-stage, .trace-panel { height: 590px; }.city-canvas { inset: 145px 0 64px !important; height: calc(100% - 209px) !important; } }
+@media (max-width: 760px) { .city-stage { height: 540px; }.trace-panel { height: 320px; }.city-canvas { inset: 122px 0 84px !important; height: calc(100% - 206px) !important; } }
