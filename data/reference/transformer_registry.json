@@ -1,0 +1,57 @@
+{
+  "substation": {
+    "id": "SUB-WHITEFIELD",
+    "name": "Whitefield 66/11 kV",
+    "location": {
+      "lat": 12.9698,
+      "lon": 77.75
+    },
+    "capacity_mva": 5
+  },
+  "transformers": [
+    {
+      "transformer_id": "DT-1",
+      "name": "ITPL Commercial Hub",
+      "kva_rating": 500,
+      "location": {
+        "lat": 12.9735,
+        "lon": 77.7455
+      },
+      "feeder_id": "F1",
+      "distance_from_substation_m": 638.0
+    },
+    {
+      "transformer_id": "DT-2",
+      "name": "Kadugodi Residential",
+      "kva_rating": 250,
+      "location": {
+        "lat": 12.9718,
+        "lon": 77.7562
+      },
+      "feeder_id": "F2",
+      "distance_from_substation_m": 707.7
+    },
+    {
+      "transformer_id": "DT-3",
+      "name": "Brookefield Apartments",
+      "kva_rating": 250,
+      "location": {
+        "lat": 12.9658,
+        "lon": 77.7448
+      },
+      "feeder_id": "F3",
+      "distance_from_substation_m": 717.9
+    },
+    {
+      "transformer_id": "DT-4",
+      "name": "Whitefield Central",
+      "kva_rating": 250,
+      "location": {
+        "lat": 12.966,
+        "lon": 77.7555
+      },
+      "feeder_id": "F4",
+      "distance_from_substation_m": 730.6
+    }
+  ]
+}

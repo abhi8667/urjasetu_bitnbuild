@@ -152,7 +152,7 @@ for block in range(feed.total_blocks()):
 
 **Invariant P2.** No network I/O anywhere in this loop. SQLite writes only.
 
-**Invariant P3.** Median tick under 50ms at 50 houses and 3 transformers. Measure from hour 20, not hour 34.
+**Invariant P3.** Median tick under 50ms at 64 nodes and 4 transformers. Measure from hour 20, not hour 34.
 
 ---
 
