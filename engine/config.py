@@ -53,8 +53,16 @@ class Config:
     rating_kva: dict[str, float] = field(default_factory=_rating_kva)
     include_ev_hubs_as_houses: bool = True  # the 4 shared hubs load their DT
 
+    # -- forecasting -------------------------------------------------------
+    forecast_alpha: float = 0.3      # EWMA weight on the most recent same-hour day
+    forecast_blend: float = 0.5      # own EWMA vs the feed's forecast
+    forecast_history_days: int = 7
+
     # -- market ------------------------------------------------------------
     min_order_kwh: float = 0.10
+    # KERC P2P Solar Energy Transaction Regulations 2024: energy cannot be
+    # routed meter-to-meter across transformers, so each DT clears its own book.
+    enforce_same_transformer: bool = True
     max_bid_kwh_per_block: float = 3.0   # keeps buyers competing for scarce surplus
 
     # -- grid limits -------------------------------------------------------
@@ -74,6 +82,15 @@ class Config:
     platform_fee: float = 0.25
     gst_pct: float = 5.0
     feed_in_tariff: float = 2.25
+    # How the counterfactual credits exported surplus.
+    #   "one_for_one" offsets kWh against consumption, worth the full retail
+    #     tariff. This IS net metering, and it is the scheme the project argues
+    #     against, so it is the default.
+    #   "feed_in" pays the KERC rate the dataset records (Rs2.25/kWh), which is
+    #     closer to gross metering.
+    # The choice flips who wins: see DECISIONS.md D13. It is a pitch decision,
+    # not a tuning knob.
+    baseline_export_credit: str = "one_for_one"
     cross_subsidy: float = 0.0
     cross_subsidy_enabled: bool = False
     credit_carryforward_blocks: int = 8760   # 12 months of hourly blocks

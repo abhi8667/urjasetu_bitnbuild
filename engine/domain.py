@@ -10,6 +10,11 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 
+class InvariantError(AssertionError):
+    """Raised when an invariant is violated. Never caught, never downgraded to a
+    warning — the assertion IS the bug report."""
+
+
 # ---------------------------------------------------------------- entities
 
 @dataclass(frozen=True)
@@ -64,6 +69,39 @@ class Trade:
     quantity_kwh: float
     clearing_price: float
     curtailed_fraction: float  # 0.0 if untouched by flow agent
+
+
+@dataclass(frozen=True)
+class BillLine:
+    """One party's side of one trade, itemised. Never aggregate at source.
+
+    `net_inr` is signed from the party's point of view: positive means the party
+    pays, negative means it receives. ST1 falls out of that convention — energy
+    cancels between buyer and seller, so the sum of every party's net position
+    equals the charges collected by the DISCOM.
+
+    The storage fee is the exception: it moves between two participants, so it
+    nets to zero across the ledger and is NOT a collected charge.
+    """
+    line_id: str
+    block: int
+    trade_id: str
+    house_id: str
+    role: Literal["buyer", "seller", "owner", "custodian"]
+    quantity_kwh: float
+    unit_price_inr: float      # the clearing price this line settled at
+    energy_inr: float
+    transaction_inr: float
+    wheeling_inr: float
+    cross_subsidy_inr: float
+    storage_fee_inr: float
+    ageing_inr: float
+    net_inr: float
+
+    @property
+    def components(self) -> tuple[float, ...]:
+        return (self.energy_inr, self.transaction_inr, self.wheeling_inr,
+                self.cross_subsidy_inr, self.storage_fee_inr, self.ageing_inr)
 
 
 @dataclass(frozen=True)
@@ -122,10 +160,26 @@ class TransformerState:
 
 
 @dataclass(frozen=True)
+class AgeingResult:
+    """Returned by C's TransformerHealthAgent.apply() for one block.
+
+    `ageing_adder` is per transformer in INR/kWh and applies to block t+1, never
+    retroactively (HL4). Defined here rather than in grid/ so that B and C share
+    one shape.
+    """
+    block: int
+    hotspot_c: dict[str, float]          # transformer_id -> hot-spot temperature
+    loss_of_life_hours: dict[str, float]  # this block only
+    cumulative_life_hours: dict[str, float]
+    ageing_adder: dict[str, float]        # INR/kWh, for block+1
+
+
+@dataclass(frozen=True)
 class StrategyParams:
     """Set once per simulated day by the LLM layer; these are the LLM-disabled
     defaults, and the engine must run correctly on them (PRD integration check 10)."""
     discount: float = 0.85
+    margin: float = 0.10            # consumer bids retail_tariff * (1 - margin)
     battery_reserve_frac: float = 0.20
     bid_aggression: float = 1.00
 
@@ -164,6 +218,7 @@ class ThermalParams:
     distribution-transformer values — see DECISIONS.md D6."""
     rated_top_oil_rise_c: float = 55.0
     rated_hotspot_rise_c: float = 80.0
+    oil_resistance_ratio_R: float = 5.0    # ONAN distribution units
     oil_exponent_n: float = 0.8
     winding_exponent_m: float = 0.8
     tau_oil_hours: float = 3.0
