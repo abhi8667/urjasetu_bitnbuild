@@ -90,7 +90,9 @@ def test_evening_prices_lift_the_reserve_price_once_they_exist():
     tick = MeterTick(19, PV_HOUSE.house_id, 2.0, 0.0, 24.0)
     for block in (19, 43, 67):
         agent.on_settled(block, [tick], [], clearing_price=6.0)
-    assert agent.reserve_price() == 6.0 * StrategyParams().discount
+    # D's real EWMA is iterative, so compare with a tolerance rather than
+    # exactly: ewma([6,6,6]) is 5.999999999999999, not 6.0.
+    assert abs(agent.reserve_price() - 6.0 * StrategyParams().discount) < 1e-9
 
 
 def test_offers_converge_on_a_constant_feed():
