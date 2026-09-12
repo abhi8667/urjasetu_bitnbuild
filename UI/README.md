@@ -1,31 +1,31 @@
-# UrjaSetu City Grid Live
+# UrjaSetu interface scaffold
 
-An interactive 3D city-scale power transmission simulator built with React,
-Three.js, and Vite. The included deterministic sample dataset models buildings,
-generators, a 220 kV grid station, 66 kV substations, 11 kV transformers, and
-their transmission lines.
+A React and Three.js implementation of the UrjaSetu operations interface with a
+live 3D network scene. It currently runs against deterministic demo payloads and exposes the
+same transport contract intended for the Python application layer.
 
-## Local development
+## Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Production build
+Open the URL printed by Vite. The default mock-live run advances automatically.
 
-```bash
-npm run build
-```
+## Demo controls
 
-The project is ready to deploy to Vercel with `UI` selected as the root
-directory. Vercel can use the default Vite build settings (`npm run build` and
-`dist`).
+- `1`–`5`: switch screens
+- `D`: derate DT-3 and trigger a reshape block
+- `C`: inject an eight-block cloud bank
+- `R`: switch from mock-live data to replay mode
+- `Space`: pause or resume Agent theatre
 
-## Navigation
+The city supports constrained orbit, pan and zoom controls. Select a house to
+inspect its transformer, phase, flow direction, PV and battery state.
 
-- Left-drag to orbit
-- Right-drag to pan
-- Scroll to change altitude
-- WASD or arrow keys to fly across the map
-- Select any building or grid asset to inspect it
+## Integration boundary
+
+Screens only use the interfaces in `src/types.ts`. Replace `DemoTransport` with
+`LiveTransport` in `src/main.ts` when the engine WebSocket is ready. The expected
+messages are `{type: "scene"|"block"|"event", data: ...}` and match UI PRD §4.3.
