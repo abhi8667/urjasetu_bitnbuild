@@ -8,6 +8,18 @@ import type { BlockPayload, SceneHouse, ScenePayload, TradePayload } from './typ
 
 type Point = [number, number, number]
 
+type FlowDirection = -1 | 0 | 1
+type PowerConnection = {
+  key: string
+  points: Point[]
+  color: string
+  direction: FlowDirection
+  speed: number
+  lineWidth: number
+  opacity: number
+  pulseSize: number
+}
+
 export type CameraMode = 'orbit' | 'top-down' | 'perspective'
 
 type CityProps = {
@@ -658,6 +670,71 @@ function GlowingEnergyArc({
   )
 }
 
+// Static conductors plus instanced moving pulses for the physical distribution
+// network. One animation loop updates every pulse, instead of mounting a
+// useFrame callback and a separate sphere geometry for all 64 service lines.
+function PowerFlowLayer({ connections }: { connections: PowerConnection[] }) {
+  const pulseMesh = useRef<THREE.InstancedMesh>(null)
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  const rendered = useMemo(
+    () =>
+      connections.map((connection) => ({
+        ...connection,
+        curve: new THREE.CatmullRomCurve3(
+          connection.points.map((point) => new THREE.Vector3(...point)),
+          false,
+          'centripetal'
+        ),
+      })),
+    [connections]
+  )
+  const active = useMemo(() => rendered.filter((connection) => connection.direction !== 0), [rendered])
+
+  useLayoutEffect(() => {
+    if (!pulseMesh.current) return
+    active.forEach((connection, index) => {
+      pulseMesh.current!.setColorAt(index, color.set(connection.color))
+    })
+    if (pulseMesh.current.instanceColor) pulseMesh.current.instanceColor.needsUpdate = true
+  }, [active, color])
+
+  useFrame(({ clock }) => {
+    if (!pulseMesh.current) return
+    active.forEach((connection, index) => {
+      const phase = (clock.elapsedTime * connection.speed + index * 0.137) % 1
+      const t = connection.direction === 1 ? phase : 1 - phase
+      dummy.position.copy(connection.curve.getPoint(t))
+      dummy.scale.setScalar(connection.pulseSize)
+      dummy.updateMatrix()
+      pulseMesh.current!.setMatrixAt(index, dummy.matrix)
+    })
+    pulseMesh.current.instanceMatrix.needsUpdate = true
+  })
+
+  return (
+    <group>
+      {rendered.map((connection) => (
+        <Line
+          key={connection.key}
+          points={connection.curve.getPoints(24)}
+          color={connection.color}
+          lineWidth={connection.lineWidth}
+          transparent
+          opacity={connection.opacity}
+        />
+      ))}
+      {active.length > 0 && (
+        <instancedMesh ref={pulseMesh} args={[undefined, undefined, active.length]} frustumCulled={false}>
+          <sphereGeometry args={[1, 10, 10]} />
+          <meshBasicMaterial vertexColors toneMapped={false} />
+        </instancedMesh>
+      )}
+    </group>
+  )
+}
+
 // Streetlight fixtures
 function StreetLight({ position }: { position: Point }) {
   const [x, y, z] = position
@@ -779,6 +856,89 @@ function CityScene({
     return (block?.trades ?? []).slice(0, 16)
   }, [block])
 
+  const gridConnections = useMemo<PowerConnection[]>(() => {
+    return scene.transformers.map((transformer, index) => {
+      const transformerPosition = layout.transformers[transformer.id]
+      const memberBalance = scene.houses
+        .filter((house) => house.transformer === transformer.id)
+        .reduce((total, house) => total + (block?.houses[house.id]?.net_kwh ?? 0), 0)
+      const direction: FlowDirection = !block
+        ? 0
+        : memberBalance > 0.05
+        ? 1
+        : memberBalance < -0.05
+        ? -1
+        : 0
+      const color = direction === -1 ? NIGHT_PALETTE.exportGold : NIGHT_PALETTE.importCyan
+      const source: Point = [layout.discom[0] + 1.0, 4.4, layout.discom[2]]
+      const target: Point = [transformerPosition[0], 1.95, transformerPosition[2]]
+
+      return {
+        key: `grid-${transformer.id}`,
+        points: [
+          source,
+          [
+            (source[0] + target[0]) / 2,
+            5.1 + index * 0.22,
+            (source[2] + target[2]) / 2,
+          ],
+          target,
+        ],
+        color,
+        direction,
+        speed: 0.24,
+        lineWidth: 1.6,
+        opacity: direction === 0 ? 0.35 : 0.72,
+        pulseSize: 0.16,
+      }
+    })
+  }, [scene, block, layout])
+
+  const serviceConnections = useMemo<PowerConnection[]>(() => {
+    return scene.houses.flatMap((house) => {
+      const transformerPosition = layout.transformers[house.transformer]
+      const housePosition = layout.houses[house.id]
+      if (!transformerPosition || !housePosition) return []
+
+      const state = block?.houses[house.id]
+      const direction: FlowDirection = !state || state.state === 'idle'
+        ? 0
+        : state.state === 'import'
+        ? 1
+        : -1
+      const connectionColor = state?.curtailed
+        ? NIGHT_PALETTE.stressRed
+        : direction === -1
+        ? NIGHT_PALETTE.exportGold
+        : direction === 1
+        ? NIGHT_PALETTE.importCyan
+        : '#64748b'
+      const source: Point = [transformerPosition[0], 1.25, transformerPosition[2]]
+      // End at the visible meter/energy pad in front of the premises, rather
+      // than disappearing into the centre of the building mesh.
+      const target: Point = [housePosition[0], 0.27, housePosition[2] + 1.25]
+
+      return [{
+        key: `service-${house.id}`,
+        points: [
+          source,
+          [
+            (source[0] + target[0]) / 2,
+            0.62,
+            (source[2] + target[2]) / 2,
+          ],
+          target,
+        ],
+        color: connectionColor,
+        direction,
+        speed: 0.34,
+        lineWidth: 0.75,
+        opacity: direction === 0 ? 0.16 : 0.42,
+        pulseSize: 0.085,
+      }]
+    })
+  }, [scene, block, layout])
+
   const streetlights = useMemo(() => {
     const list: Point[] = []
     const xs = [-6.2, 0, 6.2]
@@ -838,28 +998,9 @@ function CityScene({
       {/* DISCOM / High-Voltage Substation */}
       <TransmissionTower position={layout.discom} />
 
-      {/* Feeder line from DISCOM to Central Transformer DT-3 */}
-      {scene.transformers[0] && (
-        <Line
-          points={[
-            [layout.discom[0] + 1.0, 4.4, layout.discom[2]],
-            [
-              (layout.discom[0] + layout.transformers[scene.transformers[0].id][0]) / 2,
-              5.6,
-              (layout.discom[2] + layout.transformers[scene.transformers[0].id][2]) / 2,
-            ],
-            [
-              layout.transformers[scene.transformers[0].id][0],
-              1.8,
-              layout.transformers[scene.transformers[0].id][2],
-            ],
-          ]}
-          color="#38bdf8"
-          lineWidth={1.5}
-          transparent
-          opacity={0.65}
-        />
-      )}
+      {/* Every DT is fed by the grid. Pulses travel grid -> DT while the
+          cluster imports, and reverse when its aggregate premises export. */}
+      <PowerFlowLayer connections={gridConnections} />
 
       {/* Detailed Batched Architecture (Balconies, Windows, Parapets, Rooftop Arrays, EV Hubs, Roads) */}
       {batches.map((batch) => (
@@ -878,6 +1019,10 @@ function CityScene({
           reading={block?.transformers[transformer.id]}
         />
       ))}
+
+      {/* Physical low-voltage topology. Cyan moves DT -> premises for imports;
+          gold reverses toward the DT for exports; idle services remain faint. */}
+      <PowerFlowLayer connections={serviceConnections} />
 
       {/* Streetlights */}
       {streetlights.map((pos, i) => (
