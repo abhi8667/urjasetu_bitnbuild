@@ -37,6 +37,16 @@ class SettlementAgent:
 
         for trade in sorted(trades, key=lambda t: t.trade_id):
             qty = trade.quantity_kwh
+            # Energy physically lost between the two premises. The registry
+            # derives it per-premises from distance to the DT (3 + 0.02 * m,
+            # giving 3.25-6.75%). It was being CHARGED for and never REMOVED:
+            # sold kWh equalled delivered kWh exactly, so FL4's "plus losses"
+            # term had no energy behind it and the wires were lossless in fact
+            # while being billed as lossy. The buyer pays for what was injected
+            # on its behalf and receives what survives the trip.
+            loss_pct = self.feed.transmission_loss_pct(trade.seller_id) if self.feed else 0.0
+            loss_kwh = qty * loss_pct / 100.0
+            delivered = qty - loss_kwh
             energy = qty * trade.clearing_price
             transaction_half = qty * cfg.transaction_charge / 2
             wheeling = qty * cfg.wheeling_charge
@@ -46,7 +56,8 @@ class SettlementAgent:
             seller = BillLine(
                 line_id=f"{trade.trade_id}:S", block=trade.block, trade_id=trade.trade_id,
                 house_id=trade.seller_id, role="seller",
-                quantity_kwh=qty, unit_price_inr=trade.clearing_price,
+                quantity_kwh=qty, loss_kwh=0.0,
+                unit_price_inr=trade.clearing_price,
                 energy_inr=-energy, transaction_inr=transaction_half,
                 wheeling_inr=0.0, cross_subsidy_inr=0.0, storage_fee_inr=0.0,
                 ageing_inr=0.0,
@@ -54,7 +65,8 @@ class SettlementAgent:
             buyer = BillLine(
                 line_id=f"{trade.trade_id}:B", block=trade.block, trade_id=trade.trade_id,
                 house_id=trade.buyer_id, role="buyer",
-                quantity_kwh=qty, unit_price_inr=trade.clearing_price,
+                quantity_kwh=round(delivered, 9), loss_kwh=round(loss_kwh, 9),
+                unit_price_inr=trade.clearing_price,
                 energy_inr=energy, transaction_inr=transaction_half,
                 wheeling_inr=wheeling, cross_subsidy_inr=cross_subsidy,
                 storage_fee_inr=0.0, ageing_inr=ageing_inr,
@@ -70,7 +82,10 @@ class SettlementAgent:
 
             consumer = self.consumers.get(trade.buyer_id)
             if consumer is not None:
-                consumer.record_purchase(qty, buyer.net_inr)
+                # Delivered, not injected: the buyer got less than was sent, and
+                # CN2 must compare what it actually received against what that
+                # much energy would have cost from the grid.
+                consumer.record_purchase(delivered, buyer.net_inr)
 
         _assert_st1(lines, collected)
         _assert_st3(lines, trades)

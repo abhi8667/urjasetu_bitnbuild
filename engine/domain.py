@@ -88,7 +88,8 @@ class BillLine:
     trade_id: str
     house_id: str
     role: Literal["buyer", "seller", "owner", "custodian"]
-    quantity_kwh: float
+    quantity_kwh: float        # seller: injected. buyer: DELIVERED, after losses.
+    loss_kwh: float            # energy lost in the wires on this line, >= 0
     unit_price_inr: float      # the clearing price this line settled at
     energy_inr: float
     transaction_inr: float
