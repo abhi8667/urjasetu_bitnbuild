@@ -3,6 +3,12 @@
 Reference data for the P2P energy trading system. No simulator, no agent logic —
 just the datasets and the scripts that produced them.
 
+**The dataset is locked.** Everything the engine needs but the data does not
+carry — phase, battery power limit, retail tariff, transformer thermal
+parameters, 30 days instead of one — is synthesised in `engine/feed.py` and
+recorded in `DECISIONS.md`. Do not regenerate these files to fix an engine
+problem.
+
 ## Folder structure
 
 ```
@@ -43,7 +49,7 @@ solar/weather/tariff averages. Columns:
 | `temperature_c`, `wind_speed_m_s` | Weather (Open-Meteo-derived) |
 | `home_demand_kw`, `ev_demand_kw`, `total_demand_kw` | Demand (BESCOM-derived) |
 | `balance_kw`, `status` | Surplus/deficit and SURPLUS/DEFICIT/BALANCED flag |
-| `grid_price_inr_per_kwh` | KERC Time-of-Day tariff for that hour |
+| `grid_price_inr_per_kwh` | KERC Time-of-Day rate for that hour **plus market noise** (σ ≈ ₹0.30, floored at ₹2.50) — not the published tariff verbatim |
 | `p2p_sell_price_inr`, `p2p_buy_price_inr` | Derived P2P settlement prices |
 | `bescom_feed_in_inr` | Fixed feed-in rate (₹2.25/kWh) |
 
@@ -138,7 +144,7 @@ Location + rating for the substation and all 4 distribution transformers.
 
 **`home_batteries.csv`** — one row per battery-equipped meter per hour:
 `meter_id, timestamp, soc_pct, power_kw, direction, available_energy_kwh, temperature_c, health_pct`
-(`power_kw` is signed: negative = charging, positive = discharging, per the ±11 kW convention)
+(`power_kw` is signed: negative = charging, positive = discharging; the data ranges ±5 kW, which is what `config.battery_max_kw` uses)
 
 **`ev_charging_hubs.csv`** — 4 shared community charging hubs (one per transformer), not per-home:
 `hub_id, transformer_id, timestamp, power_draw_kw, vehicles_charging, scheduled_end_time, status, flexible_charging_window`
@@ -156,13 +162,22 @@ single-day profile.
 
 ## Data sources
 
-| Data | Source |
-|---|---|
-| Solar irradiance | [NASA POWER](https://power.larc.nasa.gov/) hourly API, 12.9716°N 77.5946°E |
-| Weather | [Open-Meteo](https://open-meteo.com/) historical archive |
-| Demand profile | BESCOM consumption data via [opencity.in](https://data.opencity.in/organization/bangalore-electricity-supply-company-limited) |
-| Tariffs | KERC Combined Tariff Order 2025 |
-| P2P charges | KERC P2P Solar Energy Transaction Regulations 2024 |
+**These CSVs are physically modelled, not measured.** No row here was fetched
+from an API. `fetch_real_data.py` builds the year from published monthly
+averages plus seeded Gaussian noise (`random.seed(42)`); its `get_*_url()`
+functions only print the API URLs you would use to replace the modelled series
+with measured ones. Say "physically modelled from published averages" in the
+pitch — no open Indian dataset pairs household load with rooftop PV at meter
+level, and naming that limit reads as rigour rather than overclaiming.
+
+| Data | Basis | Modelled? |
+|---|---|---|
+| Solar irradiance | Monthly GHI averages for Bangalore, [NASA POWER](https://power.larc.nasa.gov/) | Yes — monthly average × hourly profile × noise |
+| Weather | Monthly normals, [Open-Meteo](https://open-meteo.com/) | Yes — monthly normal + hourly offset + noise |
+| Demand profile | BESCOM consumption via [opencity.in](https://data.opencity.in/organization/bangalore-electricity-supply-company-limited) | Yes — normalised 24h profile × per-premises scale |
+| Tariffs | KERC Combined Tariff Order 2025 | No — published values, used verbatim |
+| P2P charges | KERC P2P Solar Energy Transaction Regulations 2024 | No — published values, used verbatim |
+| Device registry, locations | — | Yes — synthetic, seeded (`random.seed(7)`) |
 
 ## Regenerating the data
 

@@ -29,7 +29,7 @@ Rules for the executing agent:
 
 ### In scope
 
-- Discrete-event simulation loop over 15-minute settlement blocks
+- Discrete-event simulation loop over hourly settlement blocks (the locked dataset is hourly; `config.block_minutes = 60`, 24 blocks a day)
 - Seven agent roles (§4)
 - Market clearing, constraint checking, flow reshaping, settlement
 - Battery custody with shared storage and claims
@@ -205,7 +205,7 @@ Every event carries `block`, `agent_id`, and a `payload` dict.
 
 **Invariant P2.** No module in the tick path performs I/O other than SQLite writes. LLM calls happen outside the tick path (§9).
 
-**Invariant P3.** Median tick duration under the reference config (30 houses, 2 transformers) is under 50ms, measured by acceptance check §10.7.
+**Invariant P3.** Median tick duration under the reference config (64 nodes, 4 transformers) is under 50ms, measured by acceptance check §10.7.
 
 ---
 
@@ -234,7 +234,7 @@ Reserve price:
 floor = max(feed_in_tariff, expected_evening_price * strategy.discount)
 ```
 
-`expected_evening_price` is the agent's own EWMA of clearing prices observed in evening blocks (configurable window, default blocks 68–84). `strategy.discount` is set once per simulated day by the LLM layer (§9) and defaults to 0.85 when the LLM is disabled.
+`expected_evening_price` is the agent's own EWMA of clearing prices observed in evening blocks (configurable window, `config.evening_blocks`, default blocks 17–21). `strategy.discount` is set once per simulated day by the LLM layer (§9) and defaults to 0.85 when the LLM is disabled.
 
 If surplus <= `config.min_order_kwh`, return `None`.
 
