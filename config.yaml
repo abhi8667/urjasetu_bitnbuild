@@ -1,0 +1,51 @@
+# UrjaSetu engine configuration (PRD §8).
+#
+# Every value the engine uses, with the shipped defaults. Delete this file and
+# the engine runs identically on the declared defaults — CF1 requires a full run
+# with zero arguments either way. An unrecognised key here raises rather than
+# being ignored, so a typo cannot silently leave you on a default you did not
+# intend.
+#
+# Regenerate with:  python3 -c "from engine.config import to_yaml; print(to_yaml())"
+
+baseline_export_credit: one_for_one
+battery_max_kw: 5.0
+block_minutes: 60
+credit_carryforward_blocks: 8760
+cross_subsidy: 0.0
+cross_subsidy_enabled: false
+data_dir: data
+days: 30
+derate_factor: 1.0
+enforce_same_transformer: true
+evening_blocks:
+- 17
+- 21
+feed_in_tariff: 2.25
+forecast_alpha: 0.3
+forecast_blend: 0.5
+forecast_history_days: 7
+forecast_noise_frac: 0.1
+gst_pct: 5.0
+include_ev_hubs_as_houses: true
+lightgbm_enabled: false
+llm_enabled: false
+loading_limit: 1.0
+max_ageing_adder: 2.0
+max_bid_kwh_per_block: 3.0
+min_order_kwh: 0.1
+phase_limit: 1.15
+platform_fee: 0.25
+rated_life_hours: 180000.0
+rating_kva:
+  DT-1: 125.0
+  DT-2: 63.0
+  DT-3: 63.0
+  DT-4: 63.0
+replacement_cost_inr: 250000.0
+round_trip_efficiency: 0.9
+seed: 20250912
+storage_fee_inr_per_kwh: 0.35
+transaction_charge: 0.42
+voltage_band: 0.06
+wheeling_charge: 1.01

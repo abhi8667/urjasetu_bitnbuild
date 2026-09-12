@@ -40,6 +40,7 @@ line
 
 echo "  CONTRACTS & DATA"
 run "feed contracts (dataset, joins, topology)" tests/test_feed_contracts.py
+run "configuration (§8, CF1)"                   tests/test_config.py
 
 echo
 echo "  TRACK B — market, agents, money"
