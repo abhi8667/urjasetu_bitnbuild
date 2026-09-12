@@ -74,6 +74,23 @@ class Runner:
         self.start_block = start_block
         self.tick_durations_ms: list[float] = []
 
+    def _charge_batteries(self, block: int) -> dict[str, float]:
+        reserves = getattr(self.orders, "battery_reserves", None)
+        if not reserves or self.batteries is None:
+            return {}
+        stored: dict[str, float] = {}
+        for house_id, kwh in sorted(reserves.items()):
+            room = self.batteries.available_absorption_kwh(house_id)
+            take = min(kwh, room)
+            if take <= 1e-9:
+                continue
+            self.batteries.store_own_energy(house_id, take)
+            stored[house_id] = round(take, 6)
+            prosumer = getattr(self.orders, "prosumers", {}).get(house_id)
+            if prosumer is not None:
+                prosumer.on_settled(block, [], [], battery_delta_kwh=take)
+        return stored
+
     # ------------------------------------------------------------------ loop
 
     def run(self, blocks: int | None = None) -> dict:
@@ -112,7 +129,13 @@ class Runner:
                 "limit_price": order.limit_price,
             })
 
+        # Charge policy, before the market sees the book: whatever the prosumers
+        # held back is physically stored now, so the evening reshape has
+        # something to discharge. Own-battery only — no claims, no custody.
+        stored_now = self._charge_batteries(block)
+
         result = self.market.clear(block, orders)
+        settled_ticks = ticks
         passes = 1
         breach = self.sentinel.check(result.trades, ticks) if self.sentinel else None
 
@@ -122,7 +145,12 @@ class Runner:
                 "kind": breach.kind,
                 "severity": round(breach.severity, 4),
             })
-            if self.flow is not None:
+            # Only a loading breach is reshapable. Phase imbalance is a property
+            # of which premises sit on A, B and C — curtailing a trade or moving
+            # a kWh cannot change it, and 210 of 270 breaches on this street are
+            # phase. The sentinel keeps reporting them for the trace; the flow
+            # agent is not asked to fix what it cannot.
+            if self.flow is not None and breach.kind == "loading":
                 plan = self.flow.reshape(result.trades, ticks, breach, self.batteries)
                 self.bus.publish("reshape_proposed", block, "flow", {
                     "feasible": plan.feasible,
@@ -134,8 +162,20 @@ class Runner:
                     self.bus.publish("reshape_applied", block, "flow", {
                         "trades": len(result.trades),
                         "battery_charges": len(plan.battery_charges),
+                        "battery_discharge_kwh": round(
+                            sum(plan.battery_discharges.values()), 6),
                     })
-                breach = self.sentinel.check(result.trades, ticks)
+                # A battery discharging behind the meter reduces that premises'
+                # net import, and absorbing raises it. The sentinel reads ticks,
+                # so the re-check must read ticks that reflect what the reshape
+                # actually did — otherwise it re-measures the unreshaped street
+                # and every reshape looks like it failed.
+                for house_id, kwh in (plan.battery_discharges or {}).items():
+                    prosumer = getattr(self.orders, "prosumers", {}).get(house_id)
+                    if prosumer is not None:
+                        prosumer.on_settled(block, [], [], battery_delta_kwh=-kwh)
+                settled_ticks = _apply_battery(ticks, plan, self.config)
+                breach = self.sentinel.check(result.trades, settled_ticks)
                 if breach is not None:
                     # P1: the second failed check is final. fallback_curtail is
                     # unconditional and always succeeds — no third pass, ever.
@@ -150,7 +190,11 @@ class Runner:
                 f"P1: block {block} used {passes} clearing passes, bound is "
                 f"{MAX_CLEARING_PASSES}")
 
-        ageing = self.health.apply(result.trades, ticks) if self.health else None
+        # The health agent reads ticks, so hand it the ticks the reshape left
+        # behind — a battery that discharged genuinely reduced what the iron
+        # carried, and the ageing must reflect that or the reshape buys nothing.
+        ageing = (self.health.apply(result.trades, settled_ticks)
+                  if self.health else None)
         if ageing is not None:
             self.bus.publish("ageing_applied", block, "health", {
                 "life_used_frac": ageing.life_used_frac,
@@ -179,6 +223,24 @@ class Runner:
             "volume_kwh": round(sum(t.quantity_kwh for t in result.trades), 6),
             "bills": len(bills) if bills else 0,
         })
+
+
+def _apply_battery(ticks: list[MeterTick], plan, config) -> list[MeterTick]:
+    """Ticks as the meters would read them after the reshape moved battery energy."""
+    charge = getattr(plan, "battery_charges", None) or {}
+    discharge = getattr(plan, "battery_discharges", None) or {}
+    if not charge and not discharge:
+        return ticks
+    out = []
+    for tick in ticks:
+        delta = charge.get(tick.house_id, 0.0) - discharge.get(tick.house_id, 0.0)
+        if delta == 0.0:
+            out.append(tick)
+            continue
+        out.append(MeterTick(block=tick.block, house_id=tick.house_id,
+                             load_kwh=max(0.0, tick.load_kwh + delta),
+                             gen_kwh=tick.gen_kwh, ambient_c=tick.ambient_c))
+    return out
 
 
 def _build_orders(source, block, ticks, feed):

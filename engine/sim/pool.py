@@ -23,11 +23,17 @@ class AgentPool:
                           for h in ordered if h.has_pv}
         self.consumers = {h.house_id: ConsumerAgent(h, config, rng, strategy)
                           for h in ordered}
+        #: house_id -> kWh the last build() held back to charge a battery.
+        self.battery_reserves: dict[str, float] = {}
 
     def build(self, block: int, ticks: list[MeterTick], feed=None) -> list[Order]:
         orders: list[Order] = []
         selling: set[str] = set()
+        self.battery_reserves = {}
         for house_id, prosumer in self.prosumers.items():
+            reserved = prosumer.reserve_kwh(block, feed)
+            if reserved > 0:
+                self.battery_reserves[house_id] = round(reserved, 6)
             order = prosumer.build_offer(block, feed)
             if order is not None:
                 orders.append(order)

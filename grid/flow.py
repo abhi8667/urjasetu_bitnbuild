@@ -16,12 +16,16 @@ Invariants:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from engine.config import DEFAULT as DEFAULT_CONFIG, Config
 from engine.domain import Breach, House, MeterTick, Order, ReshapePlan, StorageClaim, Trade, Transformer
 from engine import algo
 from grid.battery import BatteryBook
+
+
+#: Must match the power factor the sentinel assumes, exactly.
+POWER_FACTOR = 0.95
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,10 @@ class ReshapeLimits:
     actual_load_kw: float
     voltage_band: float
     phase_limit: float
+    # house_id -> net kW this block, BEFORE any reshaping. The LP builds its
+    # loading and voltage rows from these; with an empty dict it has no houses
+    # to constrain and reports success having changed nothing.
+    baseline_kw: dict = field(default_factory=dict)
 
 
 class FlowAgent:
@@ -125,11 +133,25 @@ class FlowAgent:
         Translates LP solutions into constrained orders for market re-clearing and
         opens StorageClaims for battery charges. Guarantees safe failure (never raises).
         """
-        limits = self._build_limits(breach)
+        limits = self._build_limits(breach, ticks)
+        stored = {h.house_id: batteries.total_stored_kwh(h.house_id)
+                  for h in self.houses if h.has_battery} if batteries else {}
         try:
-            sol = algo.reshape_lp.solve(trades, limits, batteries, self.topology)
+            # solve() wants limits keyed by transformer and batteries as
+            # {house_id: kWh stored}. Passing the objects themselves raised
+            # TypeError on every call, and the blanket `except Exception` this
+            # replaces turned that into feasible=False 270 times out of 270.
+            sol = algo.reshape_lp.solve(
+                trades, {breach.transformer_id: limits}, stored, self.topology)
+        except (TypeError, AttributeError, KeyError, NameError):
+            # A contract break, not a solver failure. This must crash loudly:
+            # the blanket `except Exception` this replaces turned three shape
+            # mismatches into feasible=False on all 270 breaches and hid them
+            # behind the curtailment path for an entire integration.
+            raise
         except Exception:
-            # Fallback cleanly if LP solver encounters unforeseen error
+            # A genuine solver failure — infeasible, out of memory, no
+            # convergence. The fallback exists exactly for this.
             return ReshapePlan(
                 constrained_orders=[],
                 battery_charges={},
@@ -155,15 +177,29 @@ class FlowAgent:
         if batteries is not None and sol.battery_charge:
             new_claims = self._open_claims(sol.battery_charge, trades, breach, batteries)
 
+        discharges = {}
+        if batteries is not None:
+            for house_id, kwh in sorted(sol.battery_discharge.items()):
+                if kwh <= 1e-6:
+                    continue
+                # Owner-first, oldest claim first; whatever the owners decline
+                # comes out of the custodian's own stored energy.
+                moved = batteries.discharge_for_owner(house_id, kwh)
+                if moved < kwh - 1e-9:
+                    moved += batteries.discharge_custodian_own(house_id, kwh - moved)
+                if moved > 1e-6:
+                    discharges[house_id] = round(moved, 6)
+
         return ReshapePlan(
             constrained_orders=constrained_orders,
             battery_charges=sol.battery_charge,
             new_claims=new_claims,
             feasible=True,
             objective_value=sol.objective_value,
+            battery_discharges=discharges,
         )
 
-    def _build_limits(self, breach: Breach) -> ReshapeLimits:
+    def _build_limits(self, breach: Breach, ticks: list[MeterTick] | None = None) -> ReshapeLimits:
         """Constructs limits object for algo.reshape_lp.solve."""
         t = self._transformers_by_id.get(breach.transformer_id)
         rating_kva = t.rating_kva if t else 100.0
@@ -172,9 +208,21 @@ class FlowAgent:
         actual_load = breach.detail.get("actual_load_kw", rating_kva * breach.severity)
         uniform_retention = max(0.0, min(1.0, 1.0 / breach.severity)) if breach.severity > 0 else 1.0
 
+        baseline_kw = {}
+        for tick in (ticks or []):
+            h = self._houses_by_id.get(tick.house_id)
+            if h is not None and h.transformer_id == breach.transformer_id:
+                baseline_kw[tick.house_id] = (tick.load_kwh - tick.gen_kwh) / self.config.block_hours
+
+        # The sentinel measures K = sum|net_kw| / power_factor / rating_kva, so the
+        # kW a DT can actually carry is rating_kva * power_factor. The LP compares
+        # kW against rating_kva * loading_limit directly, so handing it the raw
+        # kVA figure made its constraint 5% looser than the sentinel's and the
+        # reshape came back "feasible" while the re-check still breached.
         return ReshapeLimits(
+            baseline_kw=baseline_kw,
             transformer_id=breach.transformer_id,
-            rating_kva=rating_kva,
+            rating_kva=rating_kva * POWER_FACTOR,
             loading_limit=loading_limit,
             max_load_kva=max_load,
             uniform_retention=uniform_retention,

@@ -162,13 +162,20 @@ class Baseline:
 # ------------------------------------------------------------- comparison
 
 def p2p_economics(feed, config: Config, ledger: list[BillLine],
-                  blocks: int | None = None) -> RunEconomics:
+                  blocks: int | None = None,
+                  loss_of_life_hours: float | None = None) -> RunEconomics:
     """The P2P side, reconstructed from the settled ledger plus the feed.
 
     Whatever a premises could not buy locally it still bought from the DISCOM at
     its retail tariff, and whatever it could not sell locally it still exported
     at the feed-in tariff. Both are counted here, so the two sides compare like
     for like.
+
+    `loss_of_life_hours` should be the health agent's cumulative figure from the
+    run. Pass it. Recomputing ageing from raw ticks measures the street as if the
+    flow agent had never acted, which reports 0.0 hours saved however well the
+    protection worked — the number was identical on both sides for exactly that
+    reason until this argument existed.
     """
     houses = {h.house_id: h for h in feed.houses()}
     total = blocks if blocks is not None else feed.total_blocks()
@@ -224,7 +231,8 @@ def p2p_economics(feed, config: Config, ledger: list[BillLine],
         discom_energy_revenue_inr=round(sum(grid_cost.values()), 6),
         discom_charge_revenue_inr=round(charges, 6),
         export_credits_inr=0.0,
-        loss_of_life_hours=round(life, 9),
+        loss_of_life_hours=round(
+            life if loss_of_life_hours is None else loss_of_life_hours, 9),
         per_house=bills,
     )
 

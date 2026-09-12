@@ -19,6 +19,8 @@ def _cfg_get(name, default):
 BLOCK_HOURS = _cfg_get("RESHAPE_BLOCK_HOURS", 0.25)      # 15-min blocks, project-wide default
 LOADING_LIMIT = _cfg_get("RESHAPE_LOADING_LIMIT", 0.90)  # fraction of rated kVA
 STORAGE_FEE = _cfg_get("RESHAPE_STORAGE_FEE", 0.05)      # INR/kWh — cost of using battery as a lever
+# Small positive cost so the LP discharges only when a constraint needs it.
+DISCHARGE_FEE = _cfg_get("RESHAPE_DISCHARGE_FEE", 0.05)
 VOLTAGE_BAND = _cfg_get("RESHAPE_VOLTAGE_BAND", 0.05)    # +/- per-unit, matches powerflow's per-unit output
 _Q_FACTOR = math.tan(math.acos(POWER_FACTOR))
 
@@ -64,7 +66,16 @@ def _get(obj, name, default=None):
 
 
 def _house_kw_expr(house_id, trades, battery_house_ids, baseline_by_house, n_trades):
-    """net_kw(x) = const + dot(coeffs, x) for one house, x = [c_0..c_{n-1}, b_0..b_{m-1}].
+    """net_kw(x) = const + dot(coeffs, x) for one house.
+
+    x = [c_0..c_{n-1}, a_0..a_{m-1}, d_0..d_{m-1}] — trade retentions, then one
+    ABSORB and one DISCHARGE variable per battery house, both non-negative.
+
+    Splitting the battery into two non-negative variables rather than one signed
+    variable is what makes the objective behave: a signed variable with a linear
+    cost is driven to whichever bound the sign favours, so batteries would cycle
+    every block whether or not a constraint needed it. With two costed variables
+    the LP leaves both at zero unless a constraint forces movement.
 
     Only trades where this house is the SELLER, and this house's own battery
     variable (if any), affect its own net_kw — matches the radial,
@@ -76,15 +87,18 @@ def _house_kw_expr(house_id, trades, battery_house_ids, baseline_by_house, n_tra
     relieves an export-driven (solar-surplus) overload.
     """
     const = baseline_by_house.get(house_id, 0.0)
-    coeffs = [0.0] * (n_trades + len(battery_house_ids))
+    coeffs = [0.0] * (n_trades + 2 * len(battery_house_ids))
     for i, t in enumerate(trades):
         if t.seller_id == house_id:
             share = t.quantity_kwh / BLOCK_HOURS
             const += share          # the "+qty/BH" from (1 - c_t) expanded
             coeffs[i] -= share      # the "-c_t*qty/BH" term
+    m = len(battery_house_ids)
     for j, h in enumerate(battery_house_ids):
         if h == house_id:
+            # Absorbing is extra local load (+); discharging displaces it (-).
             coeffs[n_trades + j] += 1.0 / BLOCK_HOURS
+            coeffs[n_trades + m + j] -= 1.0 / BLOCK_HOURS
     return const, coeffs
 
 
@@ -119,13 +133,16 @@ def solve(trades: list[Trade], limits, batteries=None, topology=None) -> Reshape
       FL_B  every battery_charge value is >= 0 and within both its limits
       FL_C  a feasible=True solution satisfies every constraint to 1e-6
     """
-    batteries = batteries or {}
+    # batteries: {house_id: kWh currently stored}. An object is not accepted —
+    # passing one used to raise TypeError, which the caller's blanket except
+    # turned into feasible=False on every single call.
+    batteries = dict(batteries) if batteries else {}
     trades = list(trades)
     n_trades = len(trades)
 
     battery_house_ids = [h for h in batteries if topology and h in topology]
     n_batt = len(battery_house_ids)
-    n_vars = n_trades + n_batt
+    n_vars = n_trades + 2 * n_batt
 
     if n_vars == 0:
         return ReshapeSolution(retention={}, battery_charge={}, feasible=True, objective_value=0.0)
@@ -135,16 +152,22 @@ def solve(trades: list[Trade], limits, batteries=None, topology=None) -> Reshape
     for i, t in enumerate(trades):
         cost[i] = -(t.quantity_kwh * t.clearing_price)
     for j in range(n_batt):
-        cost[n_trades + j] = STORAGE_FEE
+        cost[n_trades + j] = STORAGE_FEE            # absorb
+        cost[n_trades + n_batt + j] = DISCHARGE_FEE  # discharge
 
     # --- bounds: c_t in [0,1]; b_h in [0, min(power limit, capacity headroom)] ---
     bounds = [(0.0, 1.0)] * n_trades
+    absorb_bounds, discharge_bounds = [], []
     for h in battery_house_ids:
         house = topology[h]
-        soc_h = batteries[h]
+        stored_h = batteries[h]
         power_cap = max(0.0, house.battery_max_kw * BLOCK_HOURS)
-        headroom_cap = max(0.0, house.battery_kwh - soc_h)
-        bounds.append((0.0, min(power_cap, headroom_cap)))
+        headroom_cap = max(0.0, house.battery_kwh - stored_h)
+        absorb_bounds.append((0.0, min(power_cap, headroom_cap)))
+        # You cannot discharge energy that is not in the battery.
+        discharge_bounds.append((0.0, min(power_cap, max(0.0, stored_h))))
+    bounds.extend(absorb_bounds)
+    bounds.extend(discharge_bounds)
 
     # --- build a baseline_kw lookup merged across every transformer in limits ---
     baseline_by_house: dict[str, float] = {}
@@ -210,12 +233,12 @@ def solve(trades: list[Trade], limits, batteries=None, topology=None) -> Reshape
 
     x = result.x
     retention = {trades[i].trade_id: float(max(0.0, min(1.0, x[i]))) for i in range(n_trades)}
-    battery_charge = {battery_house_ids[j]: float(max(0.0, x[n_trades + j])) for j in range(n_batt)}
+    battery_charge = {battery_house_ids[j]: float(max(0.0, x[n_trades + j]))
+                      for j in range(n_batt)}
+    battery_discharge = {battery_house_ids[j]: float(max(0.0, x[n_trades + n_batt + j]))
+                         for j in range(n_batt)}
     objective_value = float(-result.fun)
 
-    return ReshapeSolution(
-        retention=retention,
-        battery_charge=battery_charge,
-        feasible=True,
-        objective_value=objective_value,
-    )
+    return ReshapeSolution(retention=retention, battery_charge=battery_charge,
+                           feasible=True, objective_value=objective_value,
+                           battery_discharge=battery_discharge)

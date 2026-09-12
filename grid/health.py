@@ -28,6 +28,10 @@ from engine.domain import AgeingResult, MeterTick, Trade, Transformer, Transform
 from engine import algo
 
 
+#: Must match the sentinel and the baseline exactly.
+POWER_FACTOR = 0.95
+
+
 class TransformerHealthAgent:
     """Tracks transformer insulation degradation and publishes dynamic ageing price signal."""
 
@@ -102,34 +106,42 @@ class TransformerHealthAgent:
                 if self._house_to_tid.get(tk.house_id) == tid or (not self._house_to_tid and tid in tk.house_id)
             ]
             # Baseline load without trades
-            base_kw = sum(abs(tk.load_kwh - tk.gen_kwh) / block_hours for tk in t_ticks)
+            # kVA, not kW: the sentinel measures K = sum|net_kw| / pf / rating_kva
+            # and the baseline does the same. F_AA is exponential in hot-spot
+            # temperature, so a 5% difference in K compounded into a 2x gap in
+            # loss of life between this agent and the baseline it is compared
+            # against — and the comparison is only meaningful apples to apples.
+            base_kw = sum(abs(tk.load_kwh - tk.gen_kwh) / block_hours
+                          for tk in t_ticks) / POWER_FACTOR
 
-            # Traded kWh on this transformer
-            traded_kwh = sum(tr.quantity_kwh * (1.0 - tr.curtailed_fraction) for tr in trades)
+            # Energy actually delivered across this transformer this block. The
+            # divisor is DT throughput, not traded kWh: every loading breach on
+            # this street falls in 18:00-21:00 when no trade clears at all, so a
+            # traded-kWh divisor makes the adder exactly zero precisely when the
+            # iron is being hurt most.
+            delivered_kwh = sum(abs(tk.load_kwh - tk.gen_kwh) for tk in t_ticks)
 
-            # Load with trades
             load_with_kw = base_kw
-            load_without_kw = base_kw
-
-            # Compute hotspot and loss of life with trades
             hs_with = algo.thermal.hotspot_c(load_with_kw, rating_kva, ambient_c)
             lol_with = algo.thermal.loss_of_life_hours(hs_with, block_hours)
-
-            # Compute hotspot and loss of life without trades
-            hs_without = algo.thermal.hotspot_c(load_without_kw, rating_kva, ambient_c)
-            lol_without = algo.thermal.loss_of_life_hours(hs_without, block_hours)
 
             # Accumulate loss of life (HL1: monotonic non-decreasing)
             assert lol_with >= -1e-9, "Negative loss of life"
             self._cumulative_life_hours[tid] += max(0.0, lol_with)
 
-            # Compute marginal loss of life
-            marginal_loss = max(0.0, lol_with - lol_without)
-
-            # Compute marginal adder for block t+1
-            if traded_kwh > 1e-6:
-                marginal_frac = marginal_loss / rated_life_hours
-                raw_adder = (marginal_frac * replacement_cost) / traded_kwh
+            # AVERAGE wear per kWh delivered, not the PRD's marginal
+            # loss(with_trades) - loss(without_trades). That marginal form is
+            # identically zero in this model and cannot be otherwise: a trade is
+            # a financial contract between two premises on one transformer, and
+            # it moves no power that was not already flowing. Pricing the average
+            # wear makes delivery across a hot transformer expensive, which is
+            # what "prices that wear back into tomorrow's trades" needs in order
+            # to mean anything. F_AA is exponential in hot-spot temperature, so
+            # the signal still rises sharply exactly when it should.
+            # Deviation from PRD §6.6 — recorded as DECISIONS.md D14.
+            if delivered_kwh > 1e-6:
+                raw_adder = ((lol_with / rated_life_hours) * replacement_cost
+                             / delivered_kwh)
             else:
                 raw_adder = 0.0
 

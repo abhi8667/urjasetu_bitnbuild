@@ -152,3 +152,61 @@ on the compare screen will be modest. `data/scripts/device_registry.py:88`
 Gate that on the hour-24 compare numbers, not on a hunch. It re-rolls all five
 telemetry files and invalidates the tuned ratings, breach counts and tariffs
 recorded above — budget an hour for the re-tune, and do it once.
+
+### D14 — The ageing adder prices average wear per kWh delivered, not marginal wear
+
+PRD §6.6 defines the adder from `loss_hours(with_trades) - loss_hours(without_trades)`.
+That quantity is **identically zero** in this model and cannot be otherwise: a
+P2P trade is a financial contract between two premises on one transformer and
+moves no power that was not already flowing. C's health agent encoded this
+honestly — `load_with_kw = base_kw` and `load_without_kw = base_kw` — and the
+adder was exactly ₹0.0000/kWh on every transformer for every block.
+
+The adder now prices the **average** wear on the delivering transformer:
+
+```
+adder = (loss_of_life_hours_this_block / rated_life_hours)
+        * replacement_cost_inr / kWh_delivered_on_that_transformer
+```
+
+The divisor is DT throughput, not traded kWh. Every loading breach on this
+street falls in 18:00–21:00, when no trade clears at all, so a traded-kWh
+divisor zeroes the adder precisely when the iron is being hurt most. F_AA is
+exponential in hot-spot temperature, so the signal still climbs steeply exactly
+when it should: ₹0.001/kWh on a cool transformer, ₹0.022/kWh on the hottest.
+
+**Known limitation, state it before a judge does.** Trading happens 09:00–15:00
+and stress happens 18:00–21:00, so the two are temporally disjoint on this
+street and a per-kWh settlement charge collects only ₹0.71 over 30 days. The
+signal is real and correctly signed, but it is not yet what changes behaviour —
+the battery reserve policy (D15) is. Connecting them properly means making the
+*forward* evening adder an input to the prosumer's store-or-sell decision, which
+is a design change, not a tuning knob.
+
+### D15 — Daylight surplus is reserved to discharge into the evening peak
+
+`strategy.battery_reserve_frac` (0.20) of each battery-equipped premises'
+forecast surplus is held back from the market and stored in its own battery.
+The flow agent discharges it when a loading breach appears.
+
+Without this the reshape has a lever with nothing behind it: selling every kWh
+at midday leaves the batteries empty at 19:00, which is the only hour the
+transformers are actually in trouble. Own-battery only — no claims, no custody —
+so this path cannot break FL4.
+
+Measured over 30 days: 61 kWh stored across the eight batteries, 43 reshapes
+applied where there were previously 0, and **24.0 hours of transformer life
+saved (3.9%)** against the unprotected net-metering baseline. That is the first
+non-zero value the project's central claim has ever produced.
+
+### D16 — Loading is measured in kVA everywhere, at one power factor
+
+The sentinel, the flow agent's LP limits, the health agent and the baseline all
+now divide net kW by the same `POWER_FACTOR = 0.95`. They did not: the LP's
+limit was 5% looser than the sentinel's, so a reshape came back feasible while
+the re-check still breached; and the health agent measured in kW while the
+baseline measured in kVA, which compounded through the exponential F_AA into a
+2× discrepancy in loss of life between the two sides of a comparison that is
+only meaningful apples to apples.
+
+If one of these changes, all four change together.

@@ -136,9 +136,15 @@ class Breach:
 @dataclass(frozen=True)
 class ReshapeSolution:
     retention: dict[str, float]       # trade_id -> c_t, in [0, 1]
-    battery_charge: dict[str, float]  # house_id -> kWh absorbed this block
+    battery_charge: dict[str, float]  # house_id -> kWh absorbed this block, >= 0
     feasible: bool
     objective_value: float
+    # kWh DISCHARGED this block, >= 0. Separate from battery_charge so FL_B
+    # ("every battery_charge value is >= 0") still holds: a signed field would
+    # have quietly broken that invariant. Absorption relieves an export-driven
+    # overload; discharge relieves an import-driven one, which is the only kind
+    # this street actually has (every loading breach falls in 18:00-21:00).
+    battery_discharge: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -148,6 +154,10 @@ class ReshapePlan:
     new_claims: list[StorageClaim]
     feasible: bool
     objective_value: float
+    # kWh actually discharged, >= 0. Absorption relieves an export-driven
+    # overload; discharge relieves an import-driven one, which is the only kind
+    # this street has — every loading breach lands in 18:00-21:00.
+    battery_discharges: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

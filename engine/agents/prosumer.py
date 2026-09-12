@@ -33,6 +33,7 @@ class ProsumerAgent:
 
     def build_offer(self, block: int, feed) -> Order | None:
         surplus = self.forecast_surplus_kwh(block, feed)
+        surplus -= self.reserve_kwh(block, feed)
         if surplus <= self.config.min_order_kwh:
             return None
         return Order(
@@ -62,6 +63,25 @@ class ProsumerAgent:
                - algo.forecast.ewma(list(load_hist), self.config.forecast_alpha))
         blend = self.config.forecast_blend
         return max(0.0, blend * own + (1 - blend) * feed_surplus)
+
+    def reserve_kwh(self, block: int, feed) -> float:
+        """Daylight surplus held back to charge this premises' own battery.
+
+        Selling every kWh at midday leaves nothing to discharge at 19:00, which
+        is when this street's transformers actually breach. Reserving a fraction
+        is what turns "batteries absorb" into "the energy comes back out at the
+        evening peak" — without it the flow agent has a lever with nothing behind
+        it. Own-battery only: no claims, no custody, so FL4 cannot be broken by
+        this path (the own-battery-only fallback of C's cut list).
+        """
+        if not self.house.has_battery:
+            return 0.0
+        surplus = self.forecast_surplus_kwh(block, feed)
+        if surplus <= 0.0:
+            return 0.0
+        room = max(0.0, self.house.battery_kwh - self._soc_kwh)
+        power = self.house.battery_max_kw * self.config.block_hours
+        return min(surplus * self.strategy.battery_reserve_frac, room, power)
 
     def reserve_price(self) -> float:
         """floor = max(feed_in_tariff, expected_evening_price * discount)
