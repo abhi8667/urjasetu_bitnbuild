@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import math
 import os
+import urllib.error
 import urllib.request
 from dataclasses import asdict
 from typing import Callable
@@ -25,6 +27,8 @@ class AITradingStrategyAgent:
     def decide(self, weather: dict, price_history: list[float],
                grid_risk: list[GridRiskPrediction],
                previous: StrategyParams) -> StrategyParams:
+        self.last_model = None
+        self.last_error = None
         if not self.config.llm_enabled:
             return previous
         prompt = {
@@ -46,9 +50,11 @@ class AITradingStrategyAgent:
                     bid_aggression=previous.bid_aggression,
                 )
                 self.last_model = model
+                self.last_error = None
                 return strategy
             except Exception as exc:
-                self.last_error = f"{type(exc).__name__}: {exc}"
+                # Provider error bodies can contain sensitive request details.
+                self.last_error = f"{type(exc).__name__}" + (f" (HTTP {exc.code})" if isinstance(exc, urllib.error.HTTPError) else "")
         self.last_model = None
         return previous
 
@@ -81,4 +87,6 @@ class AITradingStrategyAgent:
 
 
 def _clamp(value: float, low: float, high: float) -> float:
+    if not math.isfinite(value):
+        raise ValueError("Strategy values must be finite")
     return max(low, min(high, value))

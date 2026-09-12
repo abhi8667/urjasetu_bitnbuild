@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { City3D, type CameraMode } from './City3D'
+import { SyncedAgentNetwork, useCityBroadcast } from './agentSync'
 import { createDemoRun } from './demoFixture'
 import { DemoTransport, EngineTransport, ReplayTransport } from './transport'
 import { HAS_CONFIGURED_ENGINE } from './config'
@@ -185,40 +186,52 @@ function CircularGauge({
 }
 
 export default function App() {
+  const [route, setRoute] = useState(window.location.hash)
+  useEffect(() => {
+    const navigate = () => setRoute(window.location.hash)
+    window.addEventListener('hashchange', navigate)
+    return () => window.removeEventListener('hashchange', navigate)
+  }, [])
+  if (route.split('?')[0] === '#/agents') {
+    const source = new URLSearchParams(route.split('?')[1]).get('source')
+    return <SyncedAgentNetwork key={source} source={source} />
+  }
+  return <CityApp />
+}
+
+function CityApp() {
   const { scene, block, status, events, command, replay, reconnect, summary, offline } =
     useGridTransport()
+  const networkUrl = useCityBroadcast({ block, events, status, offline })
+  const traceRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (traceRef.current) traceRef.current.scrollTop = traceRef.current.scrollHeight
+  }, [events])
 
   // Camera traversal state
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit')
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
 
   // Floating Window toggles (Matches Image 1 buttons & Image 2 multi-windows)
-  const [showAgentStream, setShowAgentStream] = useState(false)
-  const [showTransformerHealth, setShowTransformerHealth] = useState(false)
-  const [showDiscomLedger, setShowDiscomLedger] = useState(false)
-  const [showNodeInspector, setShowNodeInspector] = useState(false)
+  const [detailPanel, setDetailPanel] = useState<'health' | 'ledger' | 'node' | null>(null)
+  const showTransformerHealth = detailPanel === 'health'
+  const showDiscomLedger = detailPanel === 'ledger'
+  const showNodeInspector = detailPanel === 'node'
   const [isNightMode, setIsNightMode] = useState(true)
-
-  const traceRef = useRef<HTMLDivElement>(null)
-
-  // Scroll to bottom of agent stream
-  useEffect(() => {
-    if (traceRef.current) {
-      traceRef.current.scrollTop = traceRef.current.scrollHeight
-    }
-  }, [events])
 
   // Open inspector automatically if a node is clicked in 3D
   const handleSelectNode = useCallback((id: string | null) => {
     setSelectedNode(id)
     if (id) {
-      setShowNodeInspector(true)
+      setCameraMode('orbit')
+      setDetailPanel('node')
     }
   }, [])
 
   // Keyboard controls
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (window.location.hash === '#/agents') return
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return
       if (event.key.toLowerCase() === 'd' && status !== 'replay') command('derate')
       if (event.key.toLowerCase() === 'c' && status !== 'replay') command('cloud')
@@ -301,7 +314,7 @@ export default function App() {
   const selectedReading = selectedNode ? block?.houses[selectedNode] : null
 
   return (
-    <div className={`urjasetu-app ${isNightMode ? 'theme-night' : 'theme-evening'}`}>
+    <div className={`urjasetu-app ${isNightMode ? 'theme-night' : 'theme-evening'} ${detailPanel ? 'has-detail-panel' : ''}`}>
       {/* 1. Immersive Full-Screen 3D City Viewport */}
       {scene ? (
         <City3D
@@ -338,8 +351,8 @@ export default function App() {
         {/* Center: Navigation Action Pills with ↗ icon */}
         <nav className="header-nav-pills">
           <button
-            className={`nav-pill-btn ${showAgentStream ? 'pill-active' : ''}`}
-            onClick={() => setShowAgentStream((v) => !v)}
+            className="nav-pill-btn"
+            onClick={() => window.open(networkUrl, '_blank', 'noopener,noreferrer')}
           >
             <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="5" r="3" />
@@ -353,7 +366,7 @@ export default function App() {
 
           <button
             className={`nav-pill-btn ${showTransformerHealth ? 'pill-active' : ''}`}
-            onClick={() => setShowTransformerHealth((v) => !v)}
+            onClick={() => setDetailPanel(current => current === 'health' ? null : 'health')}
           >
             <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 2v20M7 7h10M5 12h14M7 17h10" />
@@ -364,7 +377,7 @@ export default function App() {
 
           <button
             className={`nav-pill-btn ${showDiscomLedger ? 'pill-active' : ''}`}
-            onClick={() => setShowDiscomLedger((v) => !v)}
+            onClick={() => setDetailPanel(current => current === 'ledger' ? null : 'ledger')}
           >
             <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="4" y="3" width="16" height="18" rx="2" />
@@ -376,7 +389,7 @@ export default function App() {
 
           <button
             className={`nav-pill-btn ${showNodeInspector ? 'pill-active' : ''}`}
-            onClick={() => setShowNodeInspector((v) => !v)}
+            onClick={() => setDetailPanel(current => current === 'node' ? null : 'node')}
           >
             <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -621,63 +634,21 @@ export default function App() {
         </div>
       </aside>
 
-      {/* 7. Floating Multi-Window Modal: AGENT ACTIVITY STREAM (Image 2) */}
-      {showAgentStream && (
-        <div className="floating-window window-agent-stream">
-          <div className="window-header">
-            <div className="window-title-row">
-              <span className="dot-cyan" />
-              <h3>AGENT ACTIVITY STREAM</h3>
-            </div>
-            <button
-              className="window-close-btn"
-              onClick={() => setShowAgentStream(false)}
-              aria-label="Close Agent Stream"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="window-body stream-log-body" ref={traceRef}>
-            {events.length === 0 ? (
-              <div className="stream-empty-text">Listening for peer-to-peer agent broadcasts...</div>
-            ) : (
-              events.map((ev, i) => {
-                // Colour by which agent spoke. `flow` was computed and never
-                // used, so a curtailment read the same as a settlement line.
-                const dotColor =
-                  ev.agent === 'sentinel'
-                    ? 'dot-amber'
-                    : ev.agent === 'flow'
-                      ? 'dot-red'
-                      : ev.agent === 'settlement' || ev.agent === 'market'
-                        ? 'dot-green'
-                        : 'dot-cyan'
-
-                // SIMULATED clock, from the block the event belongs to. The
-                // timestamp here was `14:${(i * 4) % 60}` — a counter dressed
-                // as a wall clock, which drifted away from the block on screen
-                // and wrapped every fifteen entries.
-                const hour = ev.block % (scene?.blocks_per_day ?? 24)
-                const stamp = `${String(hour).padStart(2, '0')}:00`
-
-                return (
-                  <div key={`${ev.block}-${ev.kind}-${i}`} className="stream-log-entry">
-                    <span className={`log-dot ${dotColor}`} />
-                    <span className="log-text">
-                      <strong className="log-agent">[{title(ev.agent)}]</strong> {ev.text}
-                    </span>
-                    <span className="log-time">{stamp}</span>
-                  </div>
-                )
-              })
-            )}
-          </div>
-          <div className="window-footer">
-            <span>{offline ? 'Demo data — engine not connected' : 'Live agent decisions'}</span>
-            <small>Block #{block?.block ?? '—'}</small>
-          </div>
+      <section className="floating-window window-agent-stream" aria-label="Agentic communication stream">
+        <div className="window-header">
+          <div className="window-title-row"><span className="dot-cyan" /><h3>AGENT ACTIVITY</h3></div>
+          <a href={networkUrl} target="_blank" rel="noopener noreferrer" aria-label="Open 3D agent network in a new tab" style={{ color: 'var(--accent-cyan)' }}>↗</a>
         </div>
-      )}
+        <div className="window-body stream-log-body" ref={traceRef} role="log">
+          {events.length === 0 && <p className="stream-empty-text">Waiting for agent decisions…</p>}
+          {events.map((event, index) => <div className="stream-log-entry" key={`${event.block}-${index}`}>
+            <span className="log-dot" style={{ background: event.agent === 'ai_trading' || event.agent === 'llm' ? '#bc8aff' : event.agent === 'grid_risk' ? '#50e4ed' : '#ffbd69' }} />
+            <span className="log-text"><strong className="log-agent">{title(event.agent)}</strong>{event.text}</span>
+            <span className="log-time">B{event.block}</span>
+          </div>)}
+        </div>
+        <div className="window-footer">{offline ? 'Demo' : status} · Block {block?.block ?? '—'} · {block?.clock ?? 'Waiting'}</div>
+      </section>
 
       {/* 8. Floating Multi-Window Modal: TRANSFORMER HEALTH & P2P LEDGER (Image 2) */}
       {showTransformerHealth && (
@@ -689,7 +660,7 @@ export default function App() {
             </div>
             <button
               className="window-close-btn"
-              onClick={() => setShowTransformerHealth(false)}
+              onClick={() => setDetailPanel(null)}
               aria-label="Close Transformer Ledger"
             >
               ✕
@@ -790,7 +761,7 @@ export default function App() {
             </div>
             <button
               className="window-close-btn"
-              onClick={() => setShowDiscomLedger(false)}
+              onClick={() => setDetailPanel(null)}
               aria-label="Close DISCOM Ledger"
             >
               ✕
@@ -916,7 +887,7 @@ export default function App() {
             </div>
             <button
               className="window-close-btn"
-              onClick={() => setShowNodeInspector(false)}
+              onClick={() => setDetailPanel(null)}
               aria-label="Close Inspector"
             >
               ✕

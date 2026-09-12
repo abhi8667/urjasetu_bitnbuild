@@ -17,6 +17,7 @@ taken. Nothing here changes when they arrive.
 from __future__ import annotations
 
 import time
+from dataclasses import asdict
 from typing import Any, Protocol
 
 from engine.agents.market import MarketAgent
@@ -64,9 +65,10 @@ class Runner:
                  health: Health | None = None, settlement: Settlement | None = None,
                  batteries: Any = None, persist=None, start_block: int = 0,
                  include_baseline: bool = True, validate_feed: bool = True,
-                 on_block: Any = None):
+                 on_block: Any = None, risk_agent: Any = None):
         self.feed = feed
         self.orders = orders
+        self.risk_agent = risk_agent
         self.config = config
         self.bus = bus or Bus()
         self.market = MarketAgent(self.bus, feed.houses(), config)
@@ -297,9 +299,26 @@ class Runner:
         # clamped numbers on the agents' strategy and nothing else, and with no
         # key it returns the previous parameters unchanged, which is how the
         # engine runs identically with the LLM off (PRD integration check 10).
-        self._maybe_set_daily_strategy(block)
-
         raw_ticks = self.feed.ticks(block)
+        risk = self.risk_agent.predict(block, raw_ticks) if self.risk_agent else []
+        for prediction in risk:
+            self.bus.publish("grid_risk_predicted", block, "grid_risk", asdict(prediction))
+        strategy_agent = getattr(self.orders, "strategy_agent", None)
+        if strategy_agent is not None:
+            updated = self.orders.prepare_strategy(block, raw_ticks, risk)
+            state = ("disabled" if not strategy_agent.config.llm_enabled else
+                     "fallback" if strategy_agent.last_model is None else
+                     "decided" if updated else "reused")
+            strategy = self.orders.strategy
+            self.bus.publish("ai_strategy_updated" if updated else "ai_strategy_status",
+                             block, "ai_trading", {
+                "state": state, "model": strategy_agent.last_model,
+                "discount": strategy.discount, "margin": strategy.margin,
+                "risk_inputs": len(risk),
+                "error": strategy_agent.last_error,
+            })
+        else:
+            self._maybe_set_daily_strategy(block)
         orders = _build_orders(self.orders, block, raw_ticks, self.feed)
         for order in orders:
             self.bus.publish("order_submitted", block, order.house_id, {

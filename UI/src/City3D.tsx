@@ -762,82 +762,72 @@ function StreetLight({ position }: { position: Point }) {
 }
 
 // Camera Traversal Controller (Orbit / Top-Down / Perspective)
-function CameraRig({
-  mode,
-  selectedFocus,
-  extent,
-}: {
+function CameraRig({ mode, selectedFocus, extent }: {
   mode: CameraMode
   selectedFocus: Point | null
-  /** Largest world-space dimension of the laid-out street. */
   extent: number
 }) {
   const controlsRef = useRef<any>(null)
-  const { camera } = useThree()
+  const { camera, size } = useThree()
+  const fit = (extent / 2) / Math.tan((42 * Math.PI) / 180 / 2) / Math.min(1, size.width / Math.max(1, size.height))
+  const transition = useRef<{
+    from: THREE.Vector3; to: THREE.Vector3
+    fromTarget: THREE.Vector3; toTarget: THREE.Vector3; elapsed: number
+  } | null>(null)
+  const initialized = useRef(false)
 
   useEffect(() => {
-    if (!controlsRef.current) return
-    // Frame whatever the layout produced instead of a constant.
-    //
-    // Every camera position below was tuned by hand against the old schematic
-    // layout, whose extent was a fixed ~37 world units because it was a grid of
-    // rows. The real surveyed layout has a different extent and a different
-    // aspect, so the hand-tuned numbers put the whole street outside the
-    // frustum — the 3D view came back showing roads and streetlights and not
-    // one building. `k` rescales them to the layout actually in hand.
-    // Distance that actually fits `extent` in a 42-degree frustum, rather than
-    // a hand-tuned magnitude: half the extent over tan(fov/2), plus a margin so
-    // the street is not flush against the edges. Placing the camera along the
-    // same unit direction as before keeps each view's ANGLE, which was the part
-    // of the original tuning worth preserving.
-    const fit = (extent / 2) / Math.tan((42 * Math.PI) / 180 / 2)
-    const along = (dir: [number, number, number], distance: number): [number, number, number] => {
-      const length = Math.hypot(dir[0], dir[1], dir[2]) || 1
-      return [
-        (dir[0] / length) * distance,
-        (dir[1] / length) * distance,
-        (dir[2] / length) * distance,
-      ]
-    }
-
+    const controls = controlsRef.current
+    if (!controls) return
+    const along = (direction: Point, distance: number) => new THREE.Vector3(...direction).normalize().multiplyScalar(distance)
+    const target = new THREE.Vector3()
+    let position: THREE.Vector3
     if (mode === 'top-down') {
-      camera.position.set(0, Math.max(30, fit * 1.05), 0.01)
-      controlsRef.current.target.set(0, 0, 0)
-      controlsRef.current.maxPolarAngle = 0.05
-      controlsRef.current.minPolarAngle = 0
-      controlsRef.current.enableRotate = false
+      position = new THREE.Vector3(0, Math.max(30, fit * 1.05), .01)
     } else if (mode === 'perspective') {
-      camera.position.set(...along([16, 9, 24], Math.max(24, fit * 1.15)))
-      controlsRef.current.target.set(0, 1.2, 0)
-      controlsRef.current.maxPolarAngle = Math.PI / 2 - 0.05
-      controlsRef.current.minPolarAngle = 0.2
-      controlsRef.current.enableRotate = true
+      position = along([16, 9, 24], Math.max(24, fit * 1.15))
+      target.y = 1.2
+    } else if (selectedFocus) {
+      position = new THREE.Vector3(selectedFocus[0] + 12, 14, selectedFocus[2] + 14)
+      target.set(selectedFocus[0], .8, selectedFocus[2])
     } else {
-      if (selectedFocus) {
-        camera.position.set(selectedFocus[0] + 12, 14, selectedFocus[2] + 14)  // focus is absolute, not scaled
-        controlsRef.current.target.set(selectedFocus[0], 0.8, selectedFocus[2])
-      } else {
-        camera.position.set(...along([22, 24, 26], Math.max(28, fit * 1.2)))
-        controlsRef.current.target.set(0, 0, 0)
-      }
-      controlsRef.current.maxPolarAngle = 1.35
-      controlsRef.current.minPolarAngle = 0.1
-      controlsRef.current.enableRotate = true
+      position = along([22, 24, 26], Math.max(28, fit * 1.2))
     }
-    controlsRef.current.update()
-  }, [mode, selectedFocus, camera, extent])
+    // Relax polar constraints during travel so switching from top-down cannot snap.
+    controls.minPolarAngle = 0
+    controls.maxPolarAngle = Math.PI / 2
+    controls.enableRotate = mode !== 'top-down'
+    controls.enableDamping = false
+    if (!initialized.current) {
+      camera.position.copy(position)
+      controls.target.copy(target)
+      controls.update()
+      initialized.current = true
+    }
+    transition.current = {
+      from: camera.position.clone(), to: position,
+      fromTarget: controls.target.clone(), toTarget: target, elapsed: 0,
+    }
+  }, [mode, selectedFocus, camera, extent, fit])
 
-  return (
-    <OrbitControls
-      ref={controlsRef}
-      makeDefault
-      enableDamping
-      dampingFactor={0.06}
-      minDistance={6}
-      maxDistance={Math.max(85, extent * 2.6)}
-      enablePan={true}
-    />
-  )
+  useFrame((_, delta) => {
+    const travel = transition.current, controls = controlsRef.current
+    if (!travel || !controls) return
+    travel.elapsed += delta
+    const t = Math.min(1, travel.elapsed / 1.2)
+    const eased = t * t * (3 - 2 * t)
+    camera.position.lerpVectors(travel.from, travel.to, eased)
+    controls.target.lerpVectors(travel.fromTarget, travel.toTarget, eased)
+    controls.update()
+    if (t === 1) {
+      transition.current = null
+      controls.enableDamping = true
+    }
+  })
+
+  return <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={.06}
+    minDistance={6} maxDistance={Math.max(85, extent * 2.6, fit * 1.5)} enablePan
+    onStart={() => { transition.current = null; if (controlsRef.current) controlsRef.current.enableDamping = true }} />
 }
 
 // Main 3D World Scene

@@ -322,4 +322,22 @@ def event_text(topic: str, payload: dict) -> str:
     if topic == "order_submitted":
         return (f"{payload.get('side')} {payload.get('quantity_kwh', 0):.2f} kWh "
                 f"at Rs{payload.get('limit_price', 0):.2f}")
+    if topic == "grid_risk_predicted":
+        return (f"ML risk: {payload.get('transformer_id')} overload probability "
+                f"{payload.get('risk_score', 0):.1%} over the next "
+                f"{payload.get('horizon_blocks')} blocks (simulation-trained)")
+    if topic in ("ai_strategy_updated", "ai_strategy_status"):
+        state = payload.get("state")
+        if state == "disabled":
+            return "LLM disabled in server settings; deterministic strategy retained"
+        if state == "fallback":
+            return f"LLM request failed; previous strategy retained ({payload.get('error') or 'provider unavailable'})"
+        return (f"LLM strategy {'received' if state == 'decided' else 'reused for this block'} "
+                f"({payload.get('model')}): discount {payload.get('discount', 0):.2f}, "
+                f"margin {payload.get('margin', 0):.2f}; "
+                f"{payload.get('risk_inputs', 0)} ML risk inputs available")
+    if topic == "strategy_updated":
+        return (f"Daily LLM strategy updated: discount {payload.get('discount', 0):.2f}, "
+                f"margin {payload.get('margin', 0):.2f}, "
+                f"bid aggression {payload.get('bid_aggression', 0):.2f}")
     return topic.replace("_", " ")

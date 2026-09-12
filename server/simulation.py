@@ -20,6 +20,9 @@ import time
 from dataclasses import dataclass, field
 
 from engine.agents.settlement import SettlementAgent
+from engine.agents.ai_trading import AITradingStrategyAgent
+from engine.agents.grid_risk import GridFailureRiskAgent
+from engine import settings
 from engine.bus import Bus
 from engine.config import Config, load_config
 from engine.feed import WhitefieldFeed
@@ -36,7 +39,8 @@ TRACE_TOPICS = (
     "block_opened", "market_cleared", "breach_predicted", "breach_detected",
     "reshape_proposed", "reshape_applied", "fallback_curtailed",
     "ageing_applied", "battery_moved", "delivery_shortfall",
-    "bill_lines_posted",
+    "bill_lines_posted", "strategy_updated", "grid_risk_predicted",
+    "ai_strategy_updated", "ai_strategy_status",
 )
 
 #: Which agent each topic belongs to, for the UI's agent-theatre column.
@@ -52,6 +56,10 @@ _AGENT_OF = {
     "battery_moved": "battery",
     "delivery_shortfall": "runner",
     "bill_lines_posted": "settlement",
+    "strategy_updated": "ai_trading",
+    "grid_risk_predicted": "grid_risk",
+    "ai_strategy_updated": "ai_trading",
+    "ai_strategy_status": "ai_trading",
 }
 
 
@@ -100,7 +108,10 @@ def build_simulation(config: Config | None = None, days: int | None = None,
     from dataclasses import replace
 
     started = time.perf_counter()
-    config = config or load_config()
+    if config is None:
+        config = replace(load_config(), llm_enabled=settings.LLM_ENABLED,
+                         groq_primary_model=settings.GROQ_MODEL,
+                         groq_timeout_seconds=settings.GROQ_TIMEOUT_SECONDS)
     if derate is not None and derate != config.derate_factor:
         config = replace(config, derate_factor=derate)
     blocks = (days or config.days) * config.blocks_per_day
@@ -127,7 +138,11 @@ def build_simulation(config: Config | None = None, days: int | None = None,
 
     for topic in TRACE_TOPICS:
         bus.subscribe(topic, _capture)
-    pool = AgentPool(houses, config)
+    risk_agent = None
+    if config.risk_enabled:
+        # This model learns from the project's simulated feed, not field measurements.
+        risk_agent = GridFailureRiskAgent(transformers, houses, config).fit(feed)
+    pool = AgentPool(houses, config, strategy_agent=AITradingStrategyAgent(config))
     settlement = SettlementAgent(houses, config, bus=bus,
                                  consumers=pool.consumers, feed=feed)
     batteries = BatteryBook(houses, config)
@@ -141,6 +156,7 @@ def build_simulation(config: Config | None = None, days: int | None = None,
         health=health,
         settlement=settlement,
         batteries=batteries,
+        risk_agent=risk_agent,
         # The counterfactual is computed once below and shared with the compare
         # screen, rather than run twice.
         include_baseline=False,

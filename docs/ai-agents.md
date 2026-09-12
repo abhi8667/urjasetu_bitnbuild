@@ -1,61 +1,31 @@
-# UrjaSetu AI agents
+﻿# UrjaSetu AI and ML agents
 
-## 1. Grid Failure Risk Agent
+The server simulation connects the model pipeline before orders are built:
 
-- Type: supervised machine learning (logistic regression).
-- Purpose: predicts whether each transformer will overload in the next three hours.
-- Input: household load, solar generation, transformer rating, temperature, hour, and load trend.
-- Training data: 14 days of the existing Whitefield simulated meter feed by default.
-- Output: transformer ID, risk score, predicted peak loading, and likely-breach flag.
-- Connection: runs before each market block and sends its output to the trading AI and UI event bus.
+1. `GridFailureRiskAgent` fits logistic regression on the project's simulated meter feed. Each block it predicts overload risk for every transformer.
+2. `AITradingStrategyAgent` receives those risk scores, weather, prior strategy, and market price history once per simulated day. It calls Groq and clamps the returned discount and margin before distributing them to all consumer and prosumer agents.
+3. Market clearing, grid constraints, batteries, and settlement continue to enforce the physical and accounting rules.
 
-## 2. AI Trading Strategy Agent
+`server/simulation.py` wires both agents into `Runner`. The server precomputes a run and then streams its recorded decisions. The network tab mirrors the source city tab's playback through a session-specific BroadcastChannel.
 
-- Type: generative AI (Groq-hosted Qwen LLM).
-- Purpose: adjusts the daily P2P selling discount and buyer margin using market conditions and grid risk.
-- Input: temperature, recent clearing prices, previous strategy, and Grid Failure Risk Agent output.
-- Primary model: `qwen/qwen3.8-27b`.
-- Fallback model: `qwen/qwen3.6-27b` on timeout, API error, or invalid output.
-- Output: safe, clamped `discount` and `margin` values shared with all trading agents.
-- Safety: if both models fail, the previous strategy is kept and trading continues.
+## Configuration
 
-## Network
+ML is enabled by `risk_enabled` in the simulation configuration (default true). Its training source is synthetic project telemetry; risk scores are not validated field forecasts.
 
-```mermaid
-flowchart LR
-    DATA[Meter + weather data] --> RISK[Grid Failure Risk Agent]
-    RISK -->|risk forecast| AI[AI Trading Strategy Agent]
-    PRICE[Recent market prices] --> AI
-    AI -->|discount + margin| POOL[Prosumer + Consumer Agents]
-    POOL --> MARKET[Market Agent]
-    MARKET --> GRID[Grid Sentinel + Flow Agent]
-    GRID --> SETTLE[Health + Settlement Agents]
-    RISK --> UI[Vercel UI via backend events]
-    AI --> UI
-    SETTLE --> UI
-```
+For Groq, the backend reads `GROQ_API_KEY`, `URJASETU_LLM_ENABLED=true`, `GROQ_MODEL`, and `GROQ_TIMEOUT_SECONDS`. The fallback model comes from `groq_fallback_model` in the simulation configuration. Environment settings load at process startup; restart the backend to apply changes or rebuild cached runs.
 
-## Run
+The strategy agent attempts the primary model and then the fallback. If both fail, it keeps the previous strategy. Disabled configuration, provider failure, a new decision, and reuse of the daily decision are explicitly reported. A configured key alone does not prove a successful provider call.
 
-In the Render service, set `GROQ_API_KEY` as a secret environment variable.
-Then run:
+## Events
 
-```powershell
-python demo.py --days 1 --ai
-```
+- `grid_risk_predicted`: per-transformer probability and prediction horizon, every block.
+- `ai_strategy_updated`: daily decision attempt with success, disabled, or fallback state.
+- `ai_strategy_status`: strategy reuse or continuing fallback/disabled state for subsequent blocks.
 
-Without `--ai`, the deterministic market strategy is used. The ML risk agent
-still runs. Neither the API key nor Groq is required by the test suite.
+The frontend identifies these as `grid_risk` (ML) and `ai_trading` (LLM). Communication links remain documented workflow paths; the underlying event bus does not record explicit recipient acknowledgements.
 
-Run focused tests with:
+## Verification
 
-```powershell
-python tests/test_ai_agents.py
-```
+Run `python tests/test_ai_agents.py`, `python -m unittest discover -s tests -p test_strategy_stream.py`, and `npm --prefix UI run build`.
 
-For an optional real API smoke test:
-
-```powershell
-$env:RUN_GROQ_LIVE_TEST="1"
-python tests/test_ai_agents.py
-```
+Provider substitutes cover risk propagation, strategy distribution, disabled configuration, fallback, and event forwarding without transmitting project data. A real Groq verification sends risk and market context externally and requires network access.
