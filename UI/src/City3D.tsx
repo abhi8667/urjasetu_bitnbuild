@@ -220,29 +220,16 @@ function TradePulse({ trade, source, target, palette, index, reducedMotion }: { 
   useFrame(({ clock }) => {
     if (pulse.current && !reducedMotion) pulse.current.position.copy(curve.getPoint((clock.elapsedTime * .32 + index * .11) % 1))
   })
-  // A trade always travels from the exporting `from` node to the importing
-  // `to` node. Keeping the curve and the moving pulse on the same curve makes
-  // the direction readable even when several trades share a neighbourhood.
   const color = trade.curtailed ? palette.curtailed : palette.export
   return <group>
     <QuadraticBezierLine start={curve.v0} end={curve.v2} mid={curve.v1} color={color} lineWidth={2} dashed={trade.curtailed > 0} dashScale={6} transparent opacity={.8} />
-    {!reducedMotion && <mesh ref={pulse}><sphereGeometry args={[.15, 12, 10]} /><meshBasicMaterial color={color} transparent opacity={.98} /></mesh>}
+    {!reducedMotion && <mesh ref={pulse}><sphereGeometry args={[.13, 10, 8]} /><meshBasicMaterial color={palette.raised} /></mesh>}
   </group>
 }
 
 function CameraRig({ width, depth, topDown, reset, focus }: { width: number; depth: number; topDown: boolean; reset: number; focus: Point | null }) {
   const { camera, size } = useThree()
-  const hasSetInitialView = useRef(false)
-  const lastViewKey = useRef('')
   useLayoutEffect(() => {
-    // Block readings update several times per minute. Never make those normal
-    // React re-renders fight the operator's OrbitControls gesture. Camera
-    // placement is allowed only for its first paint, an explicit reset, a view
-    // mode change, or a focus target change.
-    const viewKey = `${topDown}-${reset}-${focus?.join(',') ?? 'network'}-${size.width}-${size.height}`
-    if (hasSetInitialView.current && lastViewKey.current === viewKey) return
-    hasSetInitialView.current = true
-    lastViewKey.current = viewKey
     const cam = camera as THREE.OrthographicCamera
     cam.position.set(...(topDown ? [0, 60, .001] : [28, 34, 32]) as Point)
     if (focus) cam.position.add(new THREE.Vector3(...focus))
@@ -253,7 +240,7 @@ function CameraRig({ width, depth, topDown, reset, focus }: { width: number; dep
     const extentY = Math.max(...points.map(p => p.y)) - Math.min(...points.map(p => p.y))
     cam.zoom = focus ? Math.min(60, Math.min(size.width, size.height) / 7) : Math.min(size.width * .91 / extentX, size.height * .88 / extentY)
     cam.updateProjectionMatrix()
-  }, [camera, size.width, size.height, width, depth, topDown, reset, focus])
+  }, [camera, size, width, depth, topDown, reset, focus])
   return <OrbitControls key={`${topDown}-${reset}-${focus?.join(',')}`} makeDefault target={focus ?? [0, 0, 0]} minZoom={3} maxZoom={65} minPolarAngle={.02} maxPolarAngle={1.25} enableRotate={!topDown} enablePan={false} enableDamping dampingFactor={.09} />
 }
 
@@ -268,9 +255,9 @@ function NetworkScene({ scene, block, selected, onSelect, topDown, reset, energy
   return <>
     <CameraRig width={layout.width} depth={layout.depth} topDown={topDown} reset={reset} focus={focus && selectedPosition ? selectedPosition : null} />
     <color attach="background" args={[palette.ground]} />
-    <hemisphereLight args={[palette.raised, palette.leaf, .72]} />
-    <directionalLight position={[-12, 25, 8]} intensity={2.15} color={palette.stripe} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-30} shadow-camera-right={30} shadow-camera-top={30} shadow-camera-bottom={-30} shadow-normalBias={.025} shadow-bias={-.0002} shadow-radius={3} />
-    <directionalLight position={[15, 8, -14]} intensity={.45} color={palette.import} />
+    <hemisphereLight args={[palette.raised, palette.leaf, 1.1]} />
+    <directionalLight position={[-12, 25, 8]} intensity={3} color={palette.stripe} castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-30} shadow-camera-right={30} shadow-camera-top={30} shadow-camera-bottom={-30} shadow-normalBias={.025} shadow-bias={-.0002} shadow-radius={3} />
+    <directionalLight position={[15, 8, -14]} intensity={.8} color={palette.raised} />
     <mesh position={[0, -.58, 0]} receiveShadow><boxGeometry args={[layout.width, 1, layout.depth]} /><meshStandardMaterial color={palette.metal} roughness={.85} /></mesh>
     <mesh position={[0, -.11, 0]} receiveShadow><boxGeometry args={[layout.width + .12, .15, layout.depth + .12]} /><meshStandardMaterial color={palette.roof} /></mesh>
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -.015, 0]} receiveShadow><planeGeometry args={[layout.width - .1, layout.depth - .1]} /><meshStandardMaterial color={palette.lawn} /></mesh>
