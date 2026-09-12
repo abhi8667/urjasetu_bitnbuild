@@ -4,3 +4,4 @@ __pycache__/
 *.sqlite
 *.db
 .venv/
+run_summary.json
