@@ -306,3 +306,44 @@ at three derate levels rather than a single "resolved" tick. PRD §10.6 as
 written is close to unfalsifiable — `fallback_curtail` computes a retention
 fraction that lands exactly on the limit, so it always resolves — and it passed
 while the LP contributed nothing at all.
+
+### D19 — Persistence writes are atomic per block, retried once, then fatal
+
+PRD §12 specifies "SQLite write failure → retry once, then raise — do not
+continue with unpersisted state". Neither half existed: there was no retry and
+no exception handling anywhere in `persistence.py`.
+
+The atomicity half was the more dangerous one and was not obvious from the
+spec line. `write_block` issued four separate `executemany` calls and then
+committed, with a nested `save_transformer_state` **committing partway
+through**. A failure mid-block therefore left some tables written and others
+not — and because the connection kept an open transaction, the *next* block's
+commit would sweep those leftovers in alongside its own. "Do not continue with
+unpersisted state" has to mean a block lands whole or not at all.
+
+Every write now runs as one transaction through `_atomic()`, using
+`with self.db` so a failed attempt rolls back and leaves nothing behind.
+`transformer_state` is appended to that same statement list rather than
+committed separately: it is the only table that survives a restart, and PS1
+(resume with no gap and no double count) depends on it being exactly level with
+the block it describes, never ahead or behind.
+
+Retry policy follows the same rule the flow agent learned the hard way:
+
+- **Retried once** — `OperationalError`, `DatabaseError`. Locked, busy, a disk
+  hiccup. Two attempts total, never an unbounded loop against a disk that is
+  genuinely gone.
+- **Never retried** — `ProgrammingError`, `IntegrityError`, `InterfaceError`,
+  `NotSupportedError`. Bad SQL or a violated constraint is a bug; retrying one
+  hides it briefly and then reports the wrong cause.
+
+After two failures, `PersistenceError` is raised with the original exception
+chained. `Persistence.retries_used` counts second attempts — nonzero is not a
+failure, but a run that quietly retried a hundred times is telling you
+something about the disk.
+
+`tests/test_persistence_failures.py` forces each case rather than assuming it:
+a transient failure that recovers, a permanent one that raises, exactly two
+attempts, a programming error surfacing unretried on the first attempt, a
+partial block write leaving all four tables empty, and a genuinely read-only
+database on disk.
