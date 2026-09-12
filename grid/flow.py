@@ -43,6 +43,11 @@ class ReshapeLimits:
     # loading and voltage rows from these; with an empty dict it has no houses
     # to constrain and reports success having changed nothing.
     baseline_kw: dict = field(default_factory=dict)
+    # The LP hardcoded both of these and its _cfg_get() override silently never
+    # fired (it reads module attributes on engine.config that do not exist), so
+    # it solved with 15-minute blocks and a tighter voltage band than the
+    # sentinel enforces. Passed explicitly so there is one source of truth.
+    block_hours: float = 1.0
 
 
 class FlowAgent:
@@ -221,6 +226,7 @@ class FlowAgent:
         # reshape came back "feasible" while the re-check still breached.
         return ReshapeLimits(
             baseline_kw=baseline_kw,
+            block_hours=self.config.block_hours,
             transformer_id=breach.transformer_id,
             rating_kva=rating_kva * POWER_FACTOR,
             loading_limit=loading_limit,

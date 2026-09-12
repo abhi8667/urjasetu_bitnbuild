@@ -16,7 +16,12 @@ def _cfg_get(name, default):
     return getattr(_cfg, name, default) if _cfg is not None else default
 
 
-BLOCK_HOURS = _cfg_get("RESHAPE_BLOCK_HOURS", 0.25)      # 15-min blocks, project-wide default
+# NOTE: _cfg_get reads attributes off the engine.config MODULE, which has none
+# of these names — every lookup below has always fallen through to its default.
+# The values that matter (block_hours, loading_limit, voltage_band) are now read
+# per-call from the limits object instead; these remain only as last-resort
+# fallbacks for a caller that passes nothing.
+BLOCK_HOURS = _cfg_get("RESHAPE_BLOCK_HOURS", 1.0)       # hourly blocks (DECISIONS.md D2)
 LOADING_LIMIT = _cfg_get("RESHAPE_LOADING_LIMIT", 0.90)  # fraction of rated kVA
 STORAGE_FEE = _cfg_get("RESHAPE_STORAGE_FEE", 0.05)      # INR/kWh — cost of using battery as a lever
 # Small positive cost so the LP discharges only when a constraint needs it.
@@ -65,7 +70,8 @@ def _get(obj, name, default=None):
     return getattr(obj, name, default) if not isinstance(obj, dict) else obj.get(name, default)
 
 
-def _house_kw_expr(house_id, trades, battery_house_ids, baseline_by_house, n_trades):
+def _house_kw_expr(house_id, trades, battery_house_ids, baseline_by_house, n_trades,
+                   block_hours=BLOCK_HOURS):
     """net_kw(x) = const + dot(coeffs, x) for one house.
 
     x = [c_0..c_{n-1}, a_0..a_{m-1}, d_0..d_{m-1}] — trade retentions, then one
@@ -90,15 +96,15 @@ def _house_kw_expr(house_id, trades, battery_house_ids, baseline_by_house, n_tra
     coeffs = [0.0] * (n_trades + 2 * len(battery_house_ids))
     for i, t in enumerate(trades):
         if t.seller_id == house_id:
-            share = t.quantity_kwh / BLOCK_HOURS
+            share = t.quantity_kwh / block_hours
             const += share          # the "+qty/BH" from (1 - c_t) expanded
             coeffs[i] -= share      # the "-c_t*qty/BH" term
     m = len(battery_house_ids)
     for j, h in enumerate(battery_house_ids):
         if h == house_id:
             # Absorbing is extra local load (+); discharging displaces it (-).
-            coeffs[n_trades + j] += 1.0 / BLOCK_HOURS
-            coeffs[n_trades + m + j] -= 1.0 / BLOCK_HOURS
+            coeffs[n_trades + j] += 1.0 / block_hours
+            coeffs[n_trades + m + j] -= 1.0 / block_hours
     return const, coeffs
 
 
@@ -137,6 +143,16 @@ def solve(trades: list[Trade], limits, batteries=None, topology=None) -> Reshape
     # passing one used to raise TypeError, which the caller's blanket except
     # turned into feasible=False on every single call.
     batteries = dict(batteries) if batteries else {}
+
+    # One source of truth, taken from the caller. Hardcoding these made the LP
+    # solve a strictly harder problem than the sentinel actually enforces, with
+    # a battery lever four times weaker than the real one.
+    block_hours = BLOCK_HOURS
+    voltage_band = VOLTAGE_BAND
+    if limits:
+        first = next(iter(limits.values()), None)
+        block_hours = _get(first, "block_hours", BLOCK_HOURS) or BLOCK_HOURS
+        voltage_band = _get(first, "voltage_band", VOLTAGE_BAND) or VOLTAGE_BAND
     trades = list(trades)
     n_trades = len(trades)
 
@@ -161,7 +177,7 @@ def solve(trades: list[Trade], limits, batteries=None, topology=None) -> Reshape
     for h in battery_house_ids:
         house = topology[h]
         stored_h = batteries[h]
-        power_cap = max(0.0, house.battery_max_kw * BLOCK_HOURS)
+        power_cap = max(0.0, house.battery_max_kw * block_hours)
         headroom_cap = max(0.0, house.battery_kwh - stored_h)
         absorb_bounds.append((0.0, min(power_cap, headroom_cap)))
         # You cannot discharge energy that is not in the battery.
@@ -194,7 +210,8 @@ def solve(trades: list[Trade], limits, batteries=None, topology=None) -> Reshape
             const_total = 0.0
             coeffs_total = [0.0] * n_vars
             for h in set(houses_on_tf):
-                c, co = _house_kw_expr(h, trades, battery_house_ids, baseline_by_house, n_trades)
+                c, co = _house_kw_expr(h, trades, battery_house_ids, baseline_by_house,
+                                       n_trades, block_hours)
                 const_total += c
                 coeffs_total = [a + b for a, b in zip(coeffs_total, co)]
 
@@ -212,13 +229,14 @@ def solve(trades: list[Trade], limits, batteries=None, topology=None) -> Reshape
             # deviation = -(r_seg*P_w + x_seg*Q_w)/V^2, P_w=P_kw*1000, Q_w=P_w*_Q_FACTOR
             power_coeff = -(r_seg + x_seg * _Q_FACTOR) * 1000.0 / (V_NOM_V ** 2)
 
-            const, coeffs = _house_kw_expr(h, trades, battery_house_ids, baseline_by_house, n_trades)
+            const, coeffs = _house_kw_expr(h, trades, battery_house_ids, baseline_by_house,
+                                           n_trades, block_hours)
             if const == 0.0 and all(v == 0.0 for v in coeffs):
                 continue  # untouched by any decision variable, no baseline — nothing to constrain
 
             dev_const = power_coeff * const
             dev_coeffs = [power_coeff * v for v in coeffs]
-            _bidirectional_row(dev_const, dev_coeffs, VOLTAGE_BAND, A_ub, b_ub)
+            _bidirectional_row(dev_const, dev_coeffs, voltage_band, A_ub, b_ub)
 
     result = _linprog()(
         c=cost,

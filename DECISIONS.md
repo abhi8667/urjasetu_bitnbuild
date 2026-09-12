@@ -210,3 +210,64 @@ baseline measured in kVA, which compounded through the exponential F_AA into a
 only meaningful apples to apples.
 
 If one of these changes, all four change together.
+
+### D17 — The reshape LP was solving the wrong problem: its config override never fired
+
+`algo/reshape_lp.py` resolved its constants through
+
+```python
+from engine import config as _cfg
+def _cfg_get(name, default):
+    return getattr(_cfg, name, default)
+```
+
+`_cfg` is the config **module**, which has no attribute called
+`RESHAPE_BLOCK_HOURS` or `RESHAPE_VOLTAGE_BAND` — those live on the `Config`
+**instance**, under different names. So every lookup fell through to its
+hardcoded default, silently, from the day it was written. The LP ran on:
+
+| Constant | LP used | Engine config | Effect |
+|---|---|---|---|
+| `BLOCK_HOURS` | 0.25 | 1.0 | battery bound `max_kw * 0.25` = **a quarter of the real one** |
+| `VOLTAGE_BAND` | 0.05 | 0.06 | tighter band than the sentinel enforces |
+| `LOADING_LIMIT` | 0.90 | 1.0 | (harmless — genuinely read from `limits`) |
+
+`BLOCK_HOURS = 0.25` is the 15-minute block from before D2, the same stale
+literal already found in the thermal model.
+
+`block_hours` and `voltage_band` are now carried on `ReshapeLimits` and read
+per call, so there is one source of truth. The module constants remain only as
+a fallback for a caller that passes nothing.
+
+**The fix reduces the reshape success count and that is the correct direction.**
+Over a 30-day run at the default derate:
+
+| | reshapes applied | fallbacks | discharged | transformer life |
+|---|---|---|---|---|
+| Before (stale 0.25) | 43 | 73 | 69.6 kWh | 595.2 h |
+| After (correct 1.0) | 24 | 61 | **140.2 kWh** | **594.1 h** |
+
+The old code "succeeded" more often because a 1.25 kWh battery bound is
+trivially satisfiable and barely moves the loading. The corrected LP attempts
+the real problem, succeeds less often, and moves twice the energy when it does.
+
+### D18 — Most loading breaches on this street are genuinely unreshapable, and that is the honest answer
+
+At a 60% derate, 84 of 261 loading breaches return `feasible=False`. Every one
+was audited against the discharge its transformer's batteries actually had at
+that moment, and every one had an overload beyond what those batteries could
+cover. The refusals are physics, not a formulation bug.
+
+Two structural reasons, both already recorded above:
+
+- Loading breaches fall in 18:00–21:00 (D1), when **no trade clears at all** —
+  so trade curtailment, the LP's other lever, has nothing to work with. Battery
+  discharge is the only instrument available.
+- Eight batteries at 5 kWh per block of discharge, spread across four
+  transformers, cannot absorb a 23 kW mean overload.
+
+`tests/test_breach_resolution.py` therefore reports the reshape/fallback split
+at three derate levels rather than a single "resolved" tick. PRD §10.6 as
+written is close to unfalsifiable — `fallback_curtail` computes a retention
+fraction that lands exactly on the limit, so it always resolves — and it passed
+while the LP contributed nothing at all.
