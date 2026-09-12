@@ -6,18 +6,53 @@ the transformers alive. Sixty metered premises, four transformers, Whitefield.
 ```
 docs/           the plan — read your own file, plus urjasetu-master-plan.md
 data/           the dataset. LOCKED, and only engine/feed.py reads it
-engine/         the shared foundation: contracts, config, feed, algo stubs
-tests/          contract smoke tests — stdlib only, run them now
+engine/         contracts, config, feed, the tick loop, the algorithms
+grid/           the protection agents: sentinel, flow, battery custody, health
+server/         FastAPI bridge — WebSocket + REST, engine to browser
+UI/             React + Three.js front end (deploys to Vercel)
+tests/          the suites. run_tests.sh runs all twelve
+temp/           AGENT_VERIFICATION_GUIDE.md + runnable verification checks
 DECISIONS.md    every choice the dataset forced, one line each
 ```
 
 ## Start here
 
 ```bash
-python tests/test_feed_contracts.py     # 9/9, no dependencies needed
+pip install -r requirements.txt
+./run_tests.sh                            # 12 suites, 0 skipped
+python3 demo.py --days 30                 # the whole system, ~3 seconds
+python3 temp/checks/verify_agents.py      # 50 independent checks
 ```
 
-That proves the dataset loads, the contracts hold, and breaches are reachable.
+scipy is **not optional** — the reshape LP needs it, and without it the flow
+agent never reshapes and the grid-protection half of the system silently does
+nothing. See DECISIONS.md D15.
+
+## Run it end to end
+
+```bash
+# terminal 1 — the engine
+uvicorn server.app:app --port 8000
+
+# terminal 2 — the interface
+cd UI
+printf 'VITE_ENGINE_URL=http://localhost:8000\n' > .env.local
+npm install && npm run dev
+```
+
+`GET /api/health` reports what is loaded. The WebSocket is `/ws`, speaking
+`{"type": "scene"|"summary"|"block"|"event", "data": ...}`.
+
+## Deploying
+
+The engine goes to **Render** (`render.yaml` is a working blueprint; the start
+command must bind `0.0.0.0:$PORT`). The UI goes to **Vercel** from `UI/`, with
+`VITE_ENGINE_URL` set to the Render service's public URL — it must be `https`,
+because a page served over HTTPS cannot open a plaintext `ws://` socket.
+
+Copy `.env.example` to `.env` for local secrets; on Render set the same keys in
+the dashboard. `GROQ_API_KEY` and `URJASETU_LLM_ENABLED=true` turn on the LLM
+agents; without them the engine runs identically on its deterministic defaults.
 
 ## What is already frozen
 

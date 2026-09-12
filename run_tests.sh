@@ -4,8 +4,12 @@
 #   ./run_tests.sh          full run (~40s)
 #   ./run_tests.sh --quick  skip the slow scenario/derate sweeps (~10s)
 #
-# Requires Python 3.11+. scipy is needed only for the reshape LP — everything
-# else runs on the standard library alone.
+# Requires Python 3.11+ and the packages in requirements.txt.
+#
+# scipy is NOT optional and this script no longer pretends otherwise. It used to
+# SKIP five of twelve suites when scipy was absent — every grid-agent test and
+# every PRD integration check — and then print "0 failed", which is how a broken
+# reshape path survived an entire integration. A missing dependency is a failure.
 
 cd "$(dirname "$0")" || exit 1
 QUICK=""
@@ -16,11 +20,19 @@ line() { printf '%s\n' "--------------------------------------------------------
 
 have_scipy=$(python3 -c "import scipy" 2>/dev/null && echo yes || echo no)
 
-run() {                      # run <label> <file> [needs_scipy]
-    local label="$1" file="$2" needs="$3"
-    if [ -n "$needs" ] && [ "$have_scipy" = "no" ]; then
-        printf '  SKIP  %-44s (needs scipy)\n' "$label"; skipped=$((skipped+1)); return
-    fi
+if [ "$have_scipy" = "no" ]; then
+    line
+    echo "  scipy is missing. The reshape LP cannot run without it, which means"
+    echo "  the flow agent never reshapes and the grid-protection half of"
+    echo "  UrjaSetu silently does nothing."
+    echo
+    echo "      pip install -r requirements.txt"
+    line
+    exit 1
+fi
+
+run() {                      # run <label> <file>
+    local label="$1" file="$2"
     local out
     out=$(python3 "$file" 2>&1)
     if [ $? -eq 0 ]; then
@@ -35,7 +47,7 @@ run() {                      # run <label> <file> [needs_scipy]
 
 line; echo "  UrjaSetu — test checklist"; line
 echo "  python  $(python3 -V 2>&1 | cut -d' ' -f2)"
-echo "  scipy   $have_scipy   (reshape LP only; engine runs without it)"
+echo "  scipy   $have_scipy   (required — the reshape LP does not run without it)"
 line
 
 echo "  CONTRACTS & DATA"
@@ -52,27 +64,23 @@ run "persistence failure handling (§12)"       tests/test_persistence_failures.
 
 echo
 echo "  TRACK C — grid protection"
-if [ "$have_scipy" = "yes" ]; then
-    out=$(python3 tests/grid/run_all.py 2>&1)
-    if echo "$out" | grep -q "0 failed"; then
-        printf '  PASS  %-44s %s\n' "sentinel, battery, flow, health" \
-            "$(echo "$out" | grep Overall | sed 's/.*Result: //')"
-        pass=$((pass+1))
-    else
-        printf '  FAIL  %-44s\n' "sentinel, battery, flow, health"
-        echo "$out" | grep FAIL | head -5 | sed 's/^/          /'
-        fail=$((fail+1))
-    fi
+out=$(python3 tests/grid/run_all.py 2>&1)
+if echo "$out" | grep -q "0 failed"; then
+    printf '  PASS  %-44s %s\n' "sentinel, battery, flow, health" \
+        "$(echo "$out" | grep Overall | sed 's/.*Result: //')"
+    pass=$((pass+1))
 else
-    printf '  SKIP  %-44s (needs scipy)\n' "sentinel, battery, flow, health"; skipped=$((skipped+1))
+    printf '  FAIL  %-44s\n' "sentinel, battery, flow, health"
+    echo "$out" | grep FAIL | head -5 | sed 's/^/          /'
+    fail=$((fail+1))
 fi
 
 echo
 echo "  PRD INTEGRATION CHECKS"
-run "FL4  energy conservation (§10.2)"         tests/test_fl4_energy_conservation.py scipy
-run "run_summary.json completeness (§10, §13)" tests/test_run_summary.py scipy
-[ -z "$QUICK" ] && run "breach resolution under derate (§10.6)" tests/test_breach_resolution.py scipy
-[ -z "$QUICK" ] && run "cross-scenario sweep (9 configs)"       tests/test_scenarios.py scipy
+run "FL4  energy conservation (§10.2)"         tests/test_fl4_energy_conservation.py
+run "run_summary.json completeness (§10, §13)" tests/test_run_summary.py
+[ -z "$QUICK" ] && run "breach resolution under derate (§10.6)" tests/test_breach_resolution.py
+[ -z "$QUICK" ] && run "cross-scenario sweep (9 configs)"       tests/test_scenarios.py
 [ -n "$QUICK" ] && { printf '  SKIP  %-44s (--quick)\n' "breach resolution (§10.6)"; \
                      printf '  SKIP  %-44s (--quick)\n' "cross-scenario sweep"; skipped=$((skipped+2)); }
 

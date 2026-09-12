@@ -182,10 +182,20 @@ def test_p3_median_tick_is_well_under_50ms():
     assert runner.median_tick_ms < 50.0
 
 
+#: Key SEGMENTS that would mean a wall-clock figure reached the summary.
+#: Matched per underscore-separated segment, not as substrings: the substring
+#: form flagged "storage_claims_opened" because "claims" contains "ms", which is
+#: a false positive on a field that is a count of storage claims.
+_WALL_CLOCK_SEGMENTS = {"ms", "seconds", "secs", "elapsed", "duration",
+                        "wall", "runtime", "latency", "timestamp"}
+
+
 def test_run_summary_carries_no_wall_clock_value():
     """D1 can only hold if nothing timing-dependent reaches the summary."""
     summary = _runner().run(blocks=24)
-    assert not any("ms" in k or "seconds" in k or "elapsed" in k for k in summary)
+    offending = [k for k in summary
+                 if _WALL_CLOCK_SEGMENTS & set(k.split("_"))]
+    assert not offending, f"wall-clock keys reached run_summary: {offending}"
 
 
 def test_d1_two_identical_runs_produce_identical_summaries():

@@ -1,0 +1,38 @@
+# Render blueprint for the UrjaSetu engine.
+#
+#   Render dashboard -> New -> Blueprint -> point at this repo.
+#
+# The UI is NOT here — it deploys to Vercel from UI/ and reaches this service
+# over wss://. Set VITE_ENGINE_URL in Vercel to this service's public URL.
+services:
+  - type: web
+    name: urjasetu-engine
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # $PORT is injected by Render. Binding 0.0.0.0 is required — a service bound
+    # to 127.0.0.1 passes its own health check and is unreachable from outside.
+    startCommand: uvicorn server.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      # A 30-day run takes about three seconds and ~130 MB, which fits the free
+      # tier's 512 MB. Lower this if you hit the memory ceiling.
+      - key: URJASETU_DAYS
+        value: "30"
+      - key: URJASETU_STREAM_CADENCE_S
+        value: "3.5"
+      - key: URJASETU_DERATE
+        value: "1.0"
+      # Replace with the Vercel origin once it exists. "*" is fine for a demo
+      # but means any page anywhere can open a socket to this service.
+      - key: CORS_ORIGINS
+        value: "*"
+      # Set in the dashboard, never in this file — it is committed.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: URJASETU_LLM_ENABLED
+        value: "false"
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile

@@ -1,0 +1,21 @@
+# UrjaSetu engine + server runtime dependencies.
+#
+# scipy is NOT optional. engine/algo/reshape_lp.py needs linprog, and without it
+# the flow agent reports feasible=False on every breach — the autonomous
+# reshaping half of the system silently does nothing. See DECISIONS.md D15.
+scipy==1.17.1
+
+# PRD §8 asks for a pydantic-validated config. engine/config.py degrades to the
+# stdlib dataclass when it is missing, but we install it so validation is real.
+pydantic==2.12.4
+
+# engine/config.py reads config.yaml through this.
+PyYAML==6.0.2
+
+# The server layer: WebSocket + REST bridge between the engine and the UI.
+fastapi==0.121.2
+uvicorn[standard]==0.41.0
+
+# LLM agents (Groq). The engine runs fully without a key — see engine/algo/llm.py.
+httpx==0.28.1
+python-dotenv==1.2.1

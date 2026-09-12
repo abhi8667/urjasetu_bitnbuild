@@ -90,6 +90,13 @@ class Config:
     phase_limit: float = 1.15
     voltage_band: float = 0.06
     derate_factor: float = 1.00          # demo control: 0.8 forces a breach
+    # Displacement power factor of the aggregate LT load. A transformer is rated
+    # in kVA, and the meters report kW, so EVERY module that compares the two has
+    # to divide by this. It was a module-level literal in three files and absent
+    # from a fourth (the sentinel), which put the sentinel's loading 5.3% below
+    # the health agent's on the same street. One config field, one helper in
+    # engine/physics.py, no literals — see DECISIONS.md D16.
+    power_factor: float = 0.95
 
     # -- batteries ---------------------------------------------------------
     round_trip_efficiency: float = 0.90

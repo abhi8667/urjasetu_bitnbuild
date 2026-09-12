@@ -163,23 +163,32 @@ def test_cn2_fires_when_the_charge_stack_exceeds_retail():
 
 # ----------------------------------------------------------- settlement
 
-def test_one_trade_produces_exactly_the_six_expected_components():
+def test_one_trade_produces_exactly_the_eight_expected_components():
     """2 kWh at Rs4.00.
 
     energy       2 x 4.00 = 8.00, buyer pays, seller receives
     transaction  2 x 0.42 = 0.84 total, split 0.42 each side
     wheeling     2 x 1.01 = 2.02, buyer only
+    platform     2 x 0.25 = 0.50, buyer only
+    gst          5% of (wheeling + buyer transaction + platform) = 5% of 2.94 = 0.147
     cross-subsidy, storage, ageing: zero here
 
-    Seller nets -8.00 + 0.42 = -7.58. Buyer nets 8.00 + 0.42 + 2.02 = 10.44.
-    They sum to 2.86, which is exactly what the DISCOM collected — ST1.
+    EIGHT components, not six. `platform_fee` and `gst_pct` were config values
+    that settlement documented as part of its six and then never billed — there
+    was no column for either and no code path that read them.
+
+    Seller nets -8.00 + 0.42 = -7.58.
+    Buyer nets 8.00 + 0.42 + 2.02 + 0.50 + 0.147 = 11.087.
+    They sum to 3.507, which is exactly what the DISCOM collected — ST1.
     """
     agent = SettlementAgent(FEED.houses(), CONFIG, feed=FEED)
     seller, buyer = agent.settle([Trade("T1", 12, "10006", "10000", 2.0, 4.0, 0.0)])
-    assert [round(c, 6) for c in seller.components] == [-8.0, 0.42, 0.0, 0.0, 0.0, 0.0]
-    assert [round(c, 6) for c in buyer.components] == [8.0, 0.42, 2.02, 0.0, 0.0, 0.0]
-    assert round(seller.net_inr, 6) == -7.58 and round(buyer.net_inr, 6) == 10.44
-    assert round(agent.charges_collected, 6) == 2.86
+    assert [round(c, 6) for c in seller.components] == [
+        -8.0, 0.42, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    assert [round(c, 6) for c in buyer.components] == [
+        8.0, 0.42, 2.02, 0.0, 0.0, 0.0, 0.5, 0.147]
+    assert round(seller.net_inr, 6) == -7.58 and round(buyer.net_inr, 6) == 11.087
+    assert round(agent.charges_collected, 6) == 3.507
 
 
 def test_st1_money_is_conserved_over_a_30_day_run():
@@ -220,12 +229,32 @@ def test_cross_subsidy_toggle_changes_only_that_column():
 
 
 def test_ageing_adder_reaches_the_buyers_bill():
-    """C's adder is priced into the trade, not bolted on afterwards."""
-    ageing = AgeingResult(states=[], adders={"DT-1": 1.5}, block=0)
+    """C's adder is priced into the trade, not bolted on afterwards.
+
+    Note which field carries it. `adders` is the adder computed from the CURRENT
+    block's thermal state, in force from t+1; `active_adders` is the one computed
+    in t-1 and in force NOW. HL4 says the adder billed in block t was computed no
+    later than t-1, so settlement reads `active_adders`. This test used to pass
+    the figure as `adders` and assert it reached the bill — which is to say it
+    asserted the HL4 violation.
+    """
+    ageing = AgeingResult(states=[], adders={"DT-1": 9.99},
+                          active_adders={"DT-1": 1.5}, block=0)
     agent = SettlementAgent(FEED.houses(), CONFIG, feed=FEED)
     _, buyer = agent.settle([Trade("T1", 0, "10006", "10000", 2.0, 4.0, 0.0)], ageing)
-    assert buyer.ageing_inr == 3.0
+    assert buyer.ageing_inr == 3.0, "the ACTIVE adder (t-1) must be the one billed"
     assert abs(sum(buyer.components) - buyer.net_inr) < 1e-9
+
+
+def test_hl4_the_forward_adder_never_reaches_this_blocks_bill():
+    """The complement of the test above: a figure present only in `adders`
+    must NOT be billed, or the price signal is retroactive."""
+    ageing = AgeingResult(states=[], adders={"DT-1": 2.0}, active_adders={}, block=0)
+    agent = SettlementAgent(FEED.houses(), CONFIG, feed=FEED)
+    _, buyer = agent.settle([Trade("T1", 0, "10006", "10000", 2.0, 4.0, 0.0)], ageing)
+    assert buyer.ageing_inr == 0.0, (
+        "HL4: an adder computed from THIS block's load was billed to THIS "
+        "block's trades — retroactive pricing")
 
 
 # ------------------------------------------------- market: the KERC rule

@@ -58,25 +58,41 @@ def test_loading_boundary_conditions():
     ]
     sentinel = GridSentinel([t], houses, config=config)
 
-    # Exactly 100.0 kW total load (33.333333 kW each) on 100.0 kVA rating (K = 1.000)
-    tick_100 = [
-        MeterTick(block=1, house_id=f"H-{ph}", load_kwh=100.0 / 3.0, gen_kwh=0.0, ambient_c=25.0)
+    # The boundary is in kVA, not kW. A transformer is RATED in kVA and the
+    # meters report kW, so K = (kW / power_factor) / rating_kva. This test used
+    # to feed 100 kW into a 100 kVA transformer and assert K = 1.000, which
+    # encoded the bug it was meant to guard: the sentinel compared kW against a
+    # kVA rating directly and so measured every transformer 5.3% cooler than
+    # grid/health.py measured the same one in the same block.
+    #
+    # 100 kW at 0.95 pf IS 105.3 kVA and a 100 kVA transformer carrying it is
+    # genuinely overloaded. The kW that sits exactly at the limit is
+    # rating * pf = 95.0 kW.
+    at_limit_kw = 100.0 * config.power_factor          # 95.0 kW
+    tick_at_limit = [
+        MeterTick(block=1, house_id=f"H-{ph}", load_kwh=at_limit_kw / 3.0,
+                  gen_kwh=0.0, ambient_c=25.0)
         for ph in ("A", "B", "C")
     ]
-    breach = sentinel.check([], tick_100)
+    breach = sentinel.check([], tick_at_limit)
     # config.loading_limit is 1.00 -> K <= 1.00 is NOT a breach
-    assert breach is None, f"100.0% loading must not breach, got: {breach}"
+    assert breach is None, f"exactly 100% loading must not breach, got: {breach}"
 
-    # Exactly 100.1 kW total load (100.1 / 3 kW each) on 100.0 kVA rating (K = 1.001)
-    tick_100_1 = [
-        MeterTick(block=1, house_id=f"H-{ph}", load_kwh=100.1 / 3.0, gen_kwh=0.0, ambient_c=25.0)
+    over_kw = at_limit_kw * 1.001
+    tick_over = [
+        MeterTick(block=1, house_id=f"H-{ph}", load_kwh=over_kw / 3.0,
+                  gen_kwh=0.0, ambient_c=25.0)
         for ph in ("A", "B", "C")
     ]
-    breach_over = sentinel.check([], tick_100_1)
+    breach_over = sentinel.check([], tick_over)
     assert breach_over is not None, "100.1% loading must trigger a breach"
     assert breach_over.kind == "loading"
     assert breach_over.transformer_id == "DT-TEST"
-    assert breach_over.severity >= 1.001
+    assert breach_over.severity >= 1.0009
+    # The breach must carry BOTH forms, because FlowAgent.fallback_curtail
+    # divides the kVA rating by the kVA load to size its retention fraction.
+    assert abs(breach_over.detail["actual_load_kva"]
+               - breach_over.detail["actual_load_kw"] / config.power_factor) < 1e-9
 
 
 def test_balanced_three_phase_never_breaches():
@@ -191,20 +207,31 @@ def test_voltage_deviation_breach():
 
 
 def test_derate_factor_forces_breach_on_demand():
-    """Phase 6: config.derate_factor = 0.8 forces breach on demand on DT-1 at Block 18."""
-    # Under standard rating (derate_factor = 1.0), DT-1 load at Block 18 is 121.08 kW / 125 kVA (K = 0.969 <= 1.0)
+    """Phase 6: config.derate_factor = 0.8 forces a breach on demand on DT-1.
+
+    Block 20, not block 18. At block 18 DT-1 carries 121.08 kW, which is 127.45
+    kVA against a 125 kVA rating — it breaches at the standard rating, so it
+    cannot demonstrate that the derate is what forced the breach. The old
+    version of this test read K = 121.08 / 125 = 0.969 and concluded DT-1 was
+    clean, which was the sentinel's kW-vs-kVA bug showing up as a test premise.
+
+    Block 20 carries 115.91 kW = 122.01 kVA, genuinely under 125 at the standard
+    rating (K = 0.976) and over a derated 100 kVA (K = 1.220). That is the
+    control this test wants.
+    """
+    BLOCK = 20
     feed_std = WhitefieldFeed(Config(derate_factor=1.0))
     t_dt1 = next(t for t in feed_std.transformers() if t.transformer_id == "DT-1")
     h_dt1 = [h for h in feed_std.houses() if h.transformer_id == "DT-1"]
     sentinel_std = GridSentinel([t_dt1], h_dt1, config=Config(derate_factor=1.0))
-    breaches_std = sentinel_std._loading(t_dt1, h_dt1, sentinel_std._net_kw_by_house([], feed_std.ticks(18)))
-    assert len(breaches_std) == 0, "DT-1 should not breach at block 18 under standard rating"
+    breaches_std = sentinel_std._loading(t_dt1, h_dt1, sentinel_std._net_kw_by_house([], feed_std.ticks(BLOCK)))
+    assert len(breaches_std) == 0, "DT-1 should not breach at block {BLOCK} under standard rating"
 
-    # Under derated rating (derate_factor = 0.8), rating drops to 100 kVA (K = 1.211 > 1.0)
+    # Under derated rating (derate_factor = 0.8), rating drops to 100 kVA (K = 1.220 > 1.0)
     feed_derated = WhitefieldFeed(Config(derate_factor=0.8))
     t_dt1_derated = next(t for t in feed_derated.transformers() if t.transformer_id == "DT-1")
     sentinel_derated = GridSentinel([t_dt1_derated], h_dt1, config=Config(derate_factor=0.8))
-    breaches_derated = sentinel_derated._loading(t_dt1_derated, h_dt1, sentinel_derated._net_kw_by_house([], feed_derated.ticks(18)))
+    breaches_derated = sentinel_derated._loading(t_dt1_derated, h_dt1, sentinel_derated._net_kw_by_house([], feed_derated.ticks(BLOCK)))
     assert len(breaches_derated) == 1, "DT-1 should breach on demand under derate_factor = 0.8"
     assert breaches_derated[0].severity >= 1.20, f"Severity should be >= 1.20, got {breaches_derated[0].severity}"
 

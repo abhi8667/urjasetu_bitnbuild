@@ -33,3 +33,7 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Vite local env
+.env.local
+.env.*.local

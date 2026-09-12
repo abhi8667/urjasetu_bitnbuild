@@ -3,23 +3,19 @@ from __future__ import annotations
 
 import math
 
-try:
-    from engine import config as _cfg
-except ImportError:
-    _cfg = None
+from engine.config import DEFAULT as _DEFAULT_CONFIG
 
-
-def _cfg_get(name, default):
-    return getattr(_cfg, name, default) if _cfg is not None else default
-
-
-# Per-metre LV conductor constants and system defaults — override in
-# engine/config.py as POWERFLOW_*; these are sane defaults for 415V/230V
-# aluminium LV distribution cable if config is not yet wired up.
-R_OHM_PER_M = _cfg_get("POWERFLOW_R_OHM_PER_M", 0.0003)
-X_OHM_PER_M = _cfg_get("POWERFLOW_X_OHM_PER_M", 0.0002)
-V_NOM_V = _cfg_get("POWERFLOW_V_NOM_V", 230.0)
-POWER_FACTOR = _cfg_get("POWERFLOW_POWER_FACTOR", 0.95)
+# Per-metre LV conductor constants for 415V/230V aluminium LV distribution
+# cable. These were wrapped in a `_cfg_get` that read module attributes off
+# engine.config — names that have never existed there — so every one of them
+# always took its default and the "override in engine/config.py" the comment
+# promised was not possible. They are plain module constants now, which is what
+# they always were in fact, and the power factor (the one that genuinely has to
+# agree with the rest of the system) comes from Config.
+R_OHM_PER_M = 0.0003
+X_OHM_PER_M = 0.0002
+V_NOM_V = 230.0
+POWER_FACTOR = _DEFAULT_CONFIG.power_factor
 
 
 def _distance_m(topology, house_id: str) -> float:

@@ -8,7 +8,7 @@ from __future__ import annotations
 from engine import algo
 from engine.bus import Bus
 from engine.config import DEFAULT, Config
-from engine.domain import ClearingResult, House, InvariantError, Order
+from engine.domain import ClearingResult, House, InvariantError, Order, Trade
 
 AGENT_ID = "market"
 
@@ -41,14 +41,46 @@ class MarketAgent:
         else:
             result = algo.auction.clear(orders)
         _assert_market_invariants(orders, result)
+        self._publish(block, result)
+        return result
+
+    def apply_reshape(self, block: int, orders: list[Order],
+                      trades: list[Trade]) -> ClearingResult:
+        """Accept the flow agent's LP decision as the cleared book.
+
+        The runner used to re-run `clear()` over the reshape's constrained
+        orders. That was wrong: a uniform-price auction sorts by price and walks
+        the book, and the reshape prices every constrained pair identically, so
+        the auction rematched seller A's retained energy against buyer B's bid
+        at will. The LP's per-trade allocation — which is precisely what
+        satisfies the loading and voltage rows it solved — was discarded before
+        it reached the grid, and the re-check then measured a different street
+        than the one the LP made feasible.
+
+        So the trades come through untouched. What `clear()` was really
+        providing here was the MK1/MK2 assertions, and those still run.
+        """
+        clearing_price = _volume_weighted_price(trades)
+        result = ClearingResult(
+            trades=sorted(trades, key=lambda t: t.trade_id),
+            clearing_price=clearing_price,
+            unmatched_offers=[],
+            unmatched_bids=[],
+        )
+        _assert_market_invariants(orders, result)
+        self._publish(block, result, reshaped=True)
+        return result
+
+    def _publish(self, block: int, result: ClearingResult,
+                 reshaped: bool = False) -> None:
         self.bus.publish("market_cleared", block, AGENT_ID, {
             "clearing_price": result.clearing_price,
             "trades": len(result.trades),
             "volume_kwh": round(sum(t.quantity_kwh for t in result.trades), 6),
             "unmatched_offers": len(result.unmatched_offers),
             "unmatched_bids": len(result.unmatched_bids),
+            "reshaped": reshaped,
         })
-        return result
 
     def _clear_per_transformer(self, orders: list[Order]) -> ClearingResult:
         books: dict[str, list[Order]] = {}
@@ -78,6 +110,15 @@ class MarketAgent:
         )
 
 
+def _volume_weighted_price(trades: list[Trade]) -> float | None:
+    """Reporting figure only, exactly as in `_clear_per_transformer`: each trade
+    keeps its own book's uniform price, and this is their volume-weighted mean."""
+    volume = sum(t.quantity_kwh for t in trades)
+    if volume <= 0:
+        return None
+    return round(sum(t.clearing_price * t.quantity_kwh for t in trades) / volume, 6)
+
+
 def _assert_market_invariants(orders: list[Order], result: ClearingResult) -> None:
     """MK1 and MK2, checked here rather than in D's file.
 
@@ -98,13 +139,20 @@ def _assert_market_invariants(orders: list[Order], result: ClearingResult) -> No
     if result.clearing_price is None:
         raise InvariantError("MK2: trades exist but clearing_price is None")
 
-    limits = {o.house_id: o for o in orders}
+    # Keyed by (house_id, side), not by house_id alone. A single house can hold
+    # both an offer and a bid in one book — it cannot today, because AgentPool
+    # suppresses a bid from a house that is already selling, but the reshape's
+    # constrained orders have no such rule. With a house_id-only dict the second
+    # order silently replaced the first and MK2 was then checked against the
+    # wrong side's limit: a latent false pass, and a possible false failure.
+    offers = {o.house_id: o for o in orders if o.side == "offer"}
+    bids = {o.house_id: o for o in orders if o.side == "bid"}
     for trade in result.trades:
         # Every trade settles at its own book's uniform price. With one book that
         # is result.clearing_price; with per-transformer books the merged figure
         # is a volume-weighted mean, so the check that bites is the pair of limit
         # bounds below.
-        seller, buyer = limits.get(trade.seller_id), limits.get(trade.buyer_id)
+        seller, buyer = offers.get(trade.seller_id), bids.get(trade.buyer_id)
         if seller and seller.limit_price > trade.clearing_price + 1e-9:
             raise InvariantError(
                 f"MK2: seller {trade.seller_id} floor {seller.limit_price} above "

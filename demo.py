@@ -34,11 +34,9 @@ def main() -> int:
                     help="run without C's grid agents, to compare")
     ap.add_argument("--summary", default="run_summary.json",
                     help="where to write the run summary (PRD §10)")
-    ap.add_argument("--ai", action="store_true",
-                    help="enable the Groq trading strategy agent (needs GROQ_API_KEY)")
     args = ap.parse_args()
 
-    config = replace(DEFAULT, derate_factor=args.derate, llm_enabled=args.ai)
+    config = replace(DEFAULT, derate_factor=args.derate)
     blocks = args.days * config.blocks_per_day
 
     counts = Counter()
@@ -54,13 +52,7 @@ def main() -> int:
 
     feed = WhitefieldFeed(config)
     houses, transformers = feed.houses(), feed.transformers()
-    from engine.agents.ai_trading import AITradingStrategyAgent
-    from engine.agents.grid_risk import GridFailureRiskAgent
-    risk_agent = None
-    if config.risk_enabled:
-        risk_agent = GridFailureRiskAgent(transformers, houses, config).fit(feed)
-    strategy_agent = AITradingStrategyAgent(config) if args.ai else None
-    pool = AgentPool(houses, config, strategy_agent=strategy_agent)
+    pool = AgentPool(houses, config)
     settle = SettlementAgent(houses, config, consumers=pool.consumers, feed=feed)
 
     grid_kwargs, health = {}, None
@@ -74,8 +66,15 @@ def main() -> int:
             batteries=BatteryBook(houses, config),
         )
 
-    runner = Runner(feed, pool, config, bus=CountingBus(), settlement=settle,
-                    risk_agent=risk_agent, **grid_kwargs)
+    bus = CountingBus()
+    # The settlement agent gets the bus so its own events reach the ring. It was
+    # constructed without one, so every event it published went nowhere.
+    settle.bus = bus
+    # include_baseline=False: the runner computes the counterfactual for the run
+    # summary, and this script computed it AGAIN below for the compare screen —
+    # the same 720-block loop twice. Run it once, here, and hand it to both.
+    runner = Runner(feed, pool, config, bus=bus, settlement=settle,
+                    include_baseline=False, **grid_kwargs)
     started = time.perf_counter()
     summary = runner.run(blocks=blocks)
     wall = time.perf_counter() - started
@@ -100,10 +99,6 @@ def main() -> int:
           f"({100 * lost / sold if sold else 0:.1f}%)")
     print(f"    mean clearing price  {summary['mean_clearing_price_inr'] or 0:>10.2f} INR/kWh")
     print(f"    P2P share of demand  {summary['p2p_share_of_demand_pct']:>10.2f} %")
-    if risk_agent is not None:
-        print(f"    high-risk forecasts  {summary['high_risk_predictions']:>10,}")
-    if args.ai:
-        print(f"    Groq model used      {(strategy_agent.last_model or 'safe fallback'):>10}")
 
     if not args.no_protection:
         print("\n  GRID PROTECTION")
@@ -114,6 +109,8 @@ def main() -> int:
         print(f"    reshapes applied     {counts['reshape_applied']:>10}")
         print(f"    fallback curtails    {counts['fallback_curtailed']:>10}")
         print(f"    battery discharged   {counts['discharge_kwh']:>10,.1f} kWh")
+        print(f"    breaches PREDICTED   {counts['breach_predicted']:>10}"
+              f"   ({summary['breach_prediction']['precision_pct'] or 0:.0f}% precision)")
 
     print("\n  MONEY")
     net = sum(l.net_inr for l in settle.ledger)
@@ -123,9 +120,18 @@ def main() -> int:
 
     if health is not None:
         life = sum(health._cumulative_life_hours.values())
+        baseline_result = Baseline(feed, config).run(blocks=blocks)
         result = compare(p2p_economics(feed, config, settle.ledger, blocks=blocks,
                                        loss_of_life_hours=life),
-                         Baseline(feed, config).run(blocks=blocks))
+                         baseline_result)
+        summary["baseline"] = {
+            "label": baseline_result.label,
+            "household_bills_inr": baseline_result.household_bills_inr,
+            "discom_energy_revenue_inr": baseline_result.discom_energy_revenue_inr,
+            "discom_charge_revenue_inr": baseline_result.discom_charge_revenue_inr,
+            "export_credits_inr": baseline_result.export_credits_inr,
+            "loss_of_life_hours_total": baseline_result.loss_of_life_hours,
+        }
         t = result["transformer_life_hours"]
         print("\n  VS NET METERING (same feed, same seed)")
         print(f"    baseline life used   {t['baseline']:>10,.1f} h")

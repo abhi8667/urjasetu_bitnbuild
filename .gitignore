@@ -5,3 +5,14 @@ __pycache__/
 *.db
 .venv/
 run_summary.json
+
+# Secrets — never commit
+.env
+.env.local
+
+# Node
+node_modules/
+UI/dist/
+
+# Engine artefacts
+*.log

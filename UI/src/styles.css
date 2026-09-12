@@ -1150,3 +1150,13 @@ button {
     max-width: none;
   }
 }
+
+
+/* Added with the engine wiring: the flow agent's curtailment and reshape
+   entries need to be distinguishable from ordinary settlement lines in the
+   agent stream, and an adverse figure in the DISCOM comparison table needs to
+   not be painted green. */
+.dot-red { background: #ff4d6d; box-shadow: 0 0 6px rgba(255, 77, 109, 0.75); }
+.highlight-adverse { color: #ff4d6d; font-weight: 600; }
+.live-status-pill.offline { opacity: 0.85; }
+.live-status-pill.offline .pulsing-live-dot { background: #ffb703; animation: none; }

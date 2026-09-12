@@ -20,12 +20,13 @@ from dataclasses import dataclass, field
 from typing import Any
 from engine.config import DEFAULT as DEFAULT_CONFIG, Config
 from engine.domain import Breach, House, MeterTick, Order, ReshapePlan, StorageClaim, Trade, Transformer
+from engine.physics import apparent_kva, kw_headroom_for
 from engine import algo
 from grid.battery import BatteryBook
 
-
-#: Must match the power factor the sentinel assumes, exactly.
-POWER_FACTOR = 0.95
+# The module-level POWER_FACTOR literal that used to live here is gone. It is
+# config.power_factor now, read through engine.physics, so this agent, the
+# sentinel, the health agent and the baseline cannot drift apart again.
 
 
 @dataclass(frozen=True)
@@ -75,12 +76,19 @@ class FlowAgent:
 
     def fallback_curtail(self, trades: list[Trade], breach: Breach) -> list[Trade]:
         """Uniform retention fraction bringing loading to exactly the limit.
-        
+
         Formula:
-          rho = (rating_kva * loading_limit) / actual_kva = 1.0 / breach.severity
+          rho = (rating_kva * loading_limit) / actual_load_kva = 1 / severity
           quantity = quantity * rho
           curtailed_fraction = 1.0 - rho
-          
+
+        Note what rho is divided by: `actual_load_kva`, the breach detail the
+        sentinel now publishes, NOT `actual_load_kw`. Dividing a kVA rating by a
+        kW load mixed units and made rho 5% too generous, so the "brings loading
+        exactly to the limit" claim in this docstring was false by 1/pf. The
+        two forms now agree, which is why the fallback to 1/severity below is a
+        genuine equivalent rather than a different answer.
+
         Always succeeds. Never raises.
         """
         if not trades or breach.severity <= 1.0:
@@ -88,7 +96,12 @@ class FlowAgent:
 
         # Scale factor rho brings loading exactly to the limit
         # E.g. severity = 1.20 -> rho = 1 / 1.20 = 0.8333
-        actual_kva = breach.detail.get("actual_load_kw", 0.0)
+        actual_kva = breach.detail.get("actual_load_kva")
+        if actual_kva is None:
+            # Older breach payloads carried only kW; convert rather than
+            # comparing kW against a kVA rating.
+            actual_kva = apparent_kva(breach.detail.get("actual_load_kw", 0.0),
+                                      self.config.power_factor)
         t = self._transformers_by_id.get(breach.transformer_id)
         if t and actual_kva > 0.0:
             rho = (t.rating_kva * self.config.loading_limit) / actual_kva
@@ -154,6 +167,21 @@ class FlowAgent:
             # mismatches into feasible=False on all 270 breaches and hid them
             # behind the curtailment path for an entire integration.
             raise
+        except ImportError as exc:
+            # scipy missing. This is the single most damaging failure this
+            # system had: the LP needs scipy.optimize.linprog, the import was
+            # lazy, and the resulting ModuleNotFoundError landed in the blanket
+            # `except Exception` below as feasible=False. The whole autonomous
+            # reshaping path then did nothing, silently, and the headline
+            # "baseline ages faster than P2P" check passed only because both
+            # sides came out identical. scipy is a declared dependency in
+            # requirements.txt; if it is not importable, say so and stop.
+            raise RuntimeError(
+                "The reshape LP requires scipy (pip install -r requirements.txt). "
+                "Without it the flow agent cannot reshape and the grid-protection "
+                "half of UrjaSetu silently does nothing — refusing to run "
+                "degraded. See DECISIONS.md D15."
+            ) from exc
         except Exception:
             # A genuine solver failure — infeasible, out of memory, no
             # convergence. The fallback exists exactly for this.
@@ -174,7 +202,9 @@ class FlowAgent:
                 objective_value=0.0,
             )
 
-        # Build constrained orders for market re-clearing
+        # Both views of the same LP decision: trades are authoritative, orders
+        # exist so the market agent can re-assert MK1/MK2 over them.
+        constrained_trades = self._to_constrained_trades(trades, sol.retention)
         constrained_orders = self._to_constrained_orders(trades, sol.retention)
 
         # Open storage claims for battery charges
@@ -197,6 +227,7 @@ class FlowAgent:
 
         return ReshapePlan(
             constrained_orders=constrained_orders,
+            constrained_trades=constrained_trades,
             battery_charges=sol.battery_charge,
             new_claims=new_claims,
             feasible=True,
@@ -219,16 +250,23 @@ class FlowAgent:
             if h is not None and h.transformer_id == breach.transformer_id:
                 baseline_kw[tick.house_id] = (tick.load_kwh - tick.gen_kwh) / self.config.block_hours
 
-        # The sentinel measures K = sum|net_kw| / power_factor / rating_kva, so the
-        # kW a DT can actually carry is rating_kva * power_factor. The LP compares
-        # kW against rating_kva * loading_limit directly, so handing it the raw
-        # kVA figure made its constraint 5% looser than the sentinel's and the
-        # reshape came back "feasible" while the re-check still breached.
+        # The sentinel measures K = apparent_kva(sum|net_kw|) / rating_kva, so
+        # the REAL power a DT can carry before breaching is
+        # rating_kva * loading_limit * power_factor. The LP builds its rows in
+        # kW, so it must be handed that kW bound — engine.physics.kw_headroom_for
+        # is the inverse of the sentinel's loading_k, which is what makes
+        # "feasible" from the LP mean "the re-check will pass".
+        #
+        # The LP multiplies what it is given by its own loading_limit, so the
+        # bound handed over here is pre-divided by it to avoid applying the
+        # limit twice.
+        headroom_kw = kw_headroom_for(rating_kva, loading_limit,
+                                      self.config.power_factor)
         return ReshapeLimits(
             baseline_kw=baseline_kw,
             block_hours=self.config.block_hours,
             transformer_id=breach.transformer_id,
-            rating_kva=rating_kva * POWER_FACTOR,
+            rating_kva=headroom_kw / loading_limit if loading_limit else headroom_kw,
             loading_limit=loading_limit,
             max_load_kva=max_load,
             uniform_retention=uniform_retention,
@@ -237,10 +275,44 @@ class FlowAgent:
             phase_limit=self.config.phase_limit,
         )
 
+    def _to_constrained_trades(
+        self, trades: list[Trade], retention: dict[str, float]
+    ) -> list[Trade]:
+        """The LP's decision, expressed as trades rather than as an order book.
+
+        This is the authoritative output of a reshape. The old path built a
+        matched offer/bid pair per trade and asked the auction to re-clear them,
+        but a uniform-price auction sorts by price and walks — it does NOT
+        preserve pairings. With every pair priced identically, the re-clear
+        rematched seller A's retained energy to buyer B's bid at will, and the
+        LP's careful per-trade allocation (which is what satisfies the loading
+        and voltage rows) was discarded before it ever reached the grid.
+
+        Quantities are already net of curtailment, per engine/trades.py, and
+        `curtailed_fraction` records what the LP took.
+        """
+        out: list[Trade] = []
+        for tr in trades:
+            c_t = max(0.0, min(1.0, retention.get(tr.trade_id, 1.0)))
+            retained_qty = round(tr.quantity_kwh * c_t, 6)
+            if retained_qty <= 1e-6:
+                continue
+            out.append(Trade(
+                trade_id=tr.trade_id,
+                block=tr.block,
+                seller_id=tr.seller_id,
+                buyer_id=tr.buyer_id,
+                quantity_kwh=retained_qty,
+                clearing_price=tr.clearing_price,
+                curtailed_fraction=round(1.0 - c_t, 6),
+            ))
+        return out
+
     def _to_constrained_orders(
         self, trades: list[Trade], retention: dict[str, float]
     ) -> list[Order]:
-        """Converts retained trade fractions c_t in [0, 1] into constrained matched Orders."""
+        """The same decision as an order book, for the market agent's invariant
+        checks (MK1/MK2) only. Never re-matched — see `_to_constrained_trades`."""
         orders: list[Order] = []
         for tr in trades:
             c_t = retention.get(tr.trade_id, 1.0)
@@ -282,13 +354,11 @@ class FlowAgent:
         claims: list[StorageClaim] = []
         block = trades[0].block if trades else 0
 
-        # Find trades that were curtailed on this transformer to identify claim owners
-        curtailed_trades = [
-            tr for tr in trades
-            if tr.trade_id in battery_charge or True
-        ]
+        # (A `curtailed_trades` list comprehension used to sit here with the
+        # filter `if tr.trade_id in battery_charge or True` — unconditionally
+        # true, and the result was never read. Removed.)
 
-        for house_id, kwh in battery_charge.items():
+        for house_id, kwh in sorted(battery_charge.items()):
             if kwh <= 1e-6:
                 continue
 
@@ -306,17 +376,25 @@ class FlowAgent:
                     owner_id = tr.seller_id
                     break
 
+            # Never absorb more than the battery can physically take. The LP is
+            # bounded by headroom, but its bound is computed from the stored
+            # figure at solve time; anything that moved since would make absorb()
+            # raise, and the old blanket `except Exception` swallowed it.
+            room = batteries.available_absorption_kwh(house_id)
+            take = min(kwh, room)
+            if take <= 1e-6:
+                continue
             try:
-                claim = batteries.absorb(
+                claims.append(batteries.absorb(
                     custodian_id=house_id,
                     owner_id=owner_id,
-                    kwh=kwh,
+                    kwh=take,
                     clearing_price=clearing_price,
                     block=block,
-                )
-                claims.append(claim)
-            except Exception:
-                # Guard against individual absorption errors without failing reshape
-                pass
+                ))
+            except ValueError:
+                # BT1/BT2 refusal for this one house. Skip it; the rest of the
+                # plan is still valid. Narrow, so a genuine bug still surfaces.
+                continue
 
         return claims

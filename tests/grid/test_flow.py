@@ -35,12 +35,20 @@ def test_fallback_curtail_brings_overload_to_limit():
     houses = feed.houses()
     flow = FlowAgent(transformers, houses, config=config)
 
-    # DT-1 has rating 125 kVA. An overload of 140 kW has severity 140 / 125 = 1.12 (112%)
+    # DT-1 has rating 125 kVA. An apparent load of 140 kVA has severity
+    # 140 / 125 = 1.12 (112%).
+    #
+    # Note the unit. rho is (rating_kva * limit) / actual_load_kVA — a ratio of
+    # two apparent powers. This fixture used to supply only `actual_load_kw` and
+    # expect it to be divided into a kVA rating, which mixed units and made rho
+    # 1/pf too generous, so "brings loading to exactly the limit" was wrong by
+    # 5.3%. The breach the sentinel publishes now carries both forms.
     breach = Breach(
         transformer_id="DT-1",
         kind="loading",
         severity=1.12,
-        detail={"loading_k": 1.12, "actual_load_kw": 140.0, "rating_kva": 125.0},
+        detail={"loading_k": 1.12, "actual_load_kw": 140.0 * config.power_factor,
+                "actual_load_kva": 140.0, "rating_kva": 125.0},
     )
 
     dt1_houses = [h for h in houses if h.transformer_id == "DT-1"]
@@ -201,20 +209,38 @@ def test_hour_20_gate_full_reshape_resolves_overload():
     assert curtailed_trades[0].curtailed_fraction > 0.0
 
     # 2. Reshape with evening battery discharge:
-    # DT-3 baseline load is 67.24 kW on 63 kVA rating (K = 1.067).
-    # DT-3 has two battery houses: 30035 (3.86 kW) and 30041 (4.29 kW).
-    # Discharging 3.86 kW on 30035 and 2.0 kW on 30041 brings total DT-3 load to 61.38 kW (K = 0.974 <= 1.000).
+    # DT-3 baseline load at block 19 is 67.24 kW on a 63 kVA rating. In apparent
+    # power that is 67.24 / 0.95 = 70.78 kVA, so K = 1.1235.
+    #
+    # The old version of this test computed K = 67.24 / 63 = 1.067 and concluded
+    # that shedding 5.86 kW (to 61.38 kW) reached K = 0.974. It does not: 61.38
+    # kW is 64.61 kVA and still over a 63 kVA transformer. The arithmetic came
+    # straight from the sentinel's kW-vs-kVA bug and inherited it.
+    #
+    # The real kW ceiling is rating * limit * pf = 63 * 1.00 * 0.95 = 59.85 kW,
+    # so 7.39 kW has to go. Both DT-3 batteries are rated 5 kW.
     bat_houses_dt3 = [h for h in dt3_houses if h.has_battery]
     assert len(bat_houses_dt3) >= 2, "DT-3 should have at least 2 battery premises"
     h1_id = bat_houses_dt3[0].house_id
     h2_id = bat_houses_dt3[1].house_id
 
-    # Store energy in both batteries for evening peak discharge
-    batteries.store_own_energy(h1_id, 8.0)
-    batteries.store_own_energy(h2_id, 8.0)
-    d1 = batteries.discharge_custodian_own(h1_id, 3.86)
-    d2 = batteries.discharge_custodian_own(h2_id, 2.0)
-    assert d1 == 3.86 and d2 == 2.0
+    ceiling_kw = t_dt3.rating_kva * config.loading_limit * config.power_factor
+    assert abs(ceiling_kw - 59.85) < 1e-6
+
+    # Store energy in both batteries for evening peak discharge. Note that
+    # 8.0 kWh does NOT go in: absorption is capped by battery_max_kw *
+    # block_hours = 5.0 kWh, and round-trip efficiency takes 10% of that, so
+    # 4.5 kWh actually lands. Asking for more back than that returns what is
+    # there. Assert on the total shed rather than on per-battery figures, so
+    # the test states the physical requirement instead of restating the
+    # implementation's arithmetic.
+    stored1 = batteries.store_own_energy(h1_id, 8.0)
+    stored2 = batteries.store_own_energy(h2_id, 8.0)
+    assert abs(stored1 - 5.0 * config.round_trip_efficiency) < 1e-9
+    d1 = batteries.discharge_custodian_own(h1_id, 5.0)
+    d2 = batteries.discharge_custodian_own(h2_id, 5.0)
+    assert abs(d1 - stored1) < 1e-9 and abs(d2 - stored2) < 1e-9
+    assert d1 + d2 >= 7.39, "must shed enough to reach the real kW ceiling"
 
     # Simulate ticks after batteries supply local household loads
     reshaped_ticks = []
@@ -230,7 +256,9 @@ def test_hour_20_gate_full_reshape_resolves_overload():
     net_kw = sentinel._net_kw_by_house([], reshaped_ticks)
     dt3_load_breaches = sentinel._loading(t_dt3, dt3_houses, net_kw)
     assert len(dt3_load_breaches) == 0, f"Loading on DT-3 should be <= 100%, got {dt3_load_breaches}"
-    print(f"Hour-20 Gate Passed: Overload on DT-3 (67.24 kW) resolved to <= 100% (61.38 kW, K=0.974) via battery discharge")
+    resolved_kw = sum(abs(net_kw[h.house_id]) for h in dt3_houses)
+    print(f"Hour-20 Gate Passed: DT-3 67.24 kW (K=1.1235) -> {resolved_kw:.2f} kW "
+          f"(K={resolved_kw / 0.95 / t_dt3.rating_kva:.4f}) via {d1 + d2:.2f} kW battery discharge")
 
 
 if __name__ == "__main__":

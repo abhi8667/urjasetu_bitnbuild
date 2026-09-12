@@ -13,6 +13,10 @@ from engine.config import Config
 from engine.domain import (House, InvariantError, MeterTick, Order,
                            StorageClaim, StrategyParams, Trade)
 
+#: Tolerance on PR1. Wide enough to absorb the BatteryBook's 6-dp rounding,
+#: narrow enough that a real kWh cannot hide in it.
+_SOC_EPS = 1e-6
+
 
 class ProsumerAgent:
     def __init__(self, house: House, config: Config, rng=None,
@@ -120,6 +124,17 @@ class ProsumerAgent:
 
         if battery_delta_kwh:
             self._soc_kwh += battery_delta_kwh
+            # Snap accumulated float noise to the physical bounds before
+            # asserting. The BatteryBook is the authority on what is actually
+            # stored and it rounds discharges to 6 dp while charges land at 9,
+            # so a battery run exactly empty arrives here as -1e-13 and PR1 —
+            # which exists to catch energy being invented — fires on a rounding
+            # artefact instead. Snapping is only ever applied inside the
+            # tolerance; anything genuinely outside it still raises.
+            if -_SOC_EPS <= self._soc_kwh < 0.0:
+                self._soc_kwh = 0.0
+            elif self.house.battery_kwh < self._soc_kwh <= self.house.battery_kwh + _SOC_EPS:
+                self._soc_kwh = self.house.battery_kwh
             self._assert_soc()
 
     @property
@@ -127,7 +142,7 @@ class ProsumerAgent:
         return self._soc_kwh
 
     def _assert_soc(self) -> None:
-        if not -1e-9 <= self._soc_kwh <= self.house.battery_kwh + 1e-9:
+        if not -_SOC_EPS <= self._soc_kwh <= self.house.battery_kwh + _SOC_EPS:
             raise InvariantError(
                 f"PR1: {self.house.house_id} SoC {self._soc_kwh:.6f} kWh outside "
                 f"[0, {self.house.battery_kwh}]")

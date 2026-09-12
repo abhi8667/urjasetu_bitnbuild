@@ -414,3 +414,107 @@ has four, so that is the topology we claim.*
 
 If a second topology ever becomes genuinely useful, D21 is the entry to revisit,
 and the work is a `MeterFeed` implementation, not a change to any agent.
+
+
+---
+
+## D15 — scipy is a hard dependency, and its absence must be loud
+
+`engine/algo/reshape_lp.py` needs `scipy.optimize.linprog`. The import was lazy
+and `grid/flow.py` caught the resulting `ModuleNotFoundError` in a blanket
+`except Exception`, returning `feasible=False`. On a machine without scipy the
+entire reshape path therefore did nothing, silently — 270 breaches out of 270
+fell through to curtailment, `battery_discharged_kwh` was 0.0, and the headline
+check ("baseline ages faster than P2P") passed *vacuously* at 0.0 hours saved,
+because ≥ is satisfied by equality when both sides measure the same unreshaped
+street.
+
+`run_tests.sh` compounded it by SKIPping five of twelve suites — every
+grid-agent test and every PRD integration check — and still printing "0 failed".
+
+Now: `requirements.txt` declares it, `grid/flow.py` re-raises `ImportError` as a
+`RuntimeError` naming the fix, and `run_tests.sh` exits 1 rather than skipping.
+A missing dependency is a failure, not a quieter test run.
+
+## D16 — one power factor, in one place
+
+A transformer is rated in kVA; the meters report kW. The conversion was a
+module-level literal `0.95` in `grid/flow.py` and `grid/health.py`, an inline
+`/ 0.95` in `engine/sim/baseline.py`, and **absent entirely** from
+`grid/sentinel.py`, which compared kW against a kVA rating directly.
+
+The sentinel therefore measured every transformer 5.3% cooler than the health
+agent measured the same transformer in the same block, and the LP solved against
+a third figure again. F_AA is exponential in hot-spot temperature, so that is
+not a rounding difference — and a comparison between two differently-measured
+sides is not a comparison.
+
+`config.power_factor` declares it; `engine/physics.py` applies it; nothing else
+writes it. `temp/checks/one_power_factor.py` enforces that by AST.
+
+The correction makes loading figures ~5.3% higher across the board, so two grid
+tests that had encoded the old arithmetic as their premise were updated: the
+sentinel's 100 kW / 100 kVA boundary case (100 kW at 0.95 pf *is* 105.3 kVA and
+genuinely overloaded — the kW at the limit is 95.0) and the hour-20 gate's
+"shed 5.86 kW to reach K = 0.974" (the real kW ceiling is rating × limit × pf).
+
+## D17 — `Trade.quantity_kwh` is already net of curtailment
+
+`FlowAgent.fallback_curtail` scales `quantity_kwh` by ρ **and** records
+`curtailed_fraction = 1 − ρ`. Settlement read the quantity directly and was
+right; `GridSentinel` multiplied the two together and was wrong by ρ².
+
+Convention: `quantity_kwh` is what the trade actually moves, and
+`curtailed_fraction` is provenance, not a multiplier. `engine/trades.py` holds
+the single function that answers the question, so it cannot be re-derived
+differently at each call site.
+
+## D18 — HL4 needs two adder dicts, not one
+
+`AgeingResult.adders` is computed from the current block's thermal state and is
+in force from t+1. Settlement was reading it, which priced a trade with
+information that did not exist when it was struck — retroactive, and exactly
+what HL4 forbids. `active_adders` (computed in t-1, in force now) is a separate
+field, and the `ageing_adder` property points at it so the default path is the
+correct one.
+
+## D19 — eight bill components, and a cap that keeps CN2 true
+
+`platform_fee` (Rs0.25/kWh) and `gst_pct` (5%) were config values that
+settlement documented as part of its "six components, every one a config value"
+and then never billed — no column, no code path. They are components 7 and 8.
+
+Adding them puts real pressure on CN2 (a buyer's all-in must never exceed the
+DISCOM's price). CN1 bounds the *energy* price; it says nothing about energy
+plus six charges. Rather than let an assertion stop a run for a reason that is
+not a bug, the stack is capped and the **ageing adder** is what gives way — it
+is the discretionary price signal, not a statutory charge, and `max_ageing_adder`
+already exists because the signal is understood to need bounding. Every trim is
+totalled in `run_summary.ageing_adder_trimmed_inr` and surfaced in the API's
+`warnings`, so the cap cannot quietly hide a settlement bug.
+
+## D20 — the reshape's allocation is applied, not re-cleared
+
+The runner used to re-run `MarketAgent.clear()` over the reshape's constrained
+orders. A uniform-price auction sorts by price and walks the book, and the
+reshape prices every constrained pair identically — so the auction rematched
+seller A's retained energy against whichever bid sorted first. The LP's
+per-trade allocation, which is *precisely* what satisfies the loading and
+voltage rows it solved, was discarded before it reached the grid, and the
+re-check then measured a different street than the one the LP had made feasible.
+
+`ReshapePlan.constrained_trades` carries the decision; `MarketAgent.apply_reshape`
+accepts it and still asserts MK1/MK2, which is what re-clearing was really
+providing.
+
+## D21 — the engine is precomputed and streamed, not simulated per connection
+
+A 30-day run is 720 blocks in under three seconds and about 130 MB. The server
+runs it once at boot and streams the recorded blocks over a WebSocket.
+
+Simulating live per connection would buy nothing and cost a great deal: every
+viewer would need its own engine state, a Render cold start would land mid-run,
+and a restart would lose it. One shared immutable run means every viewer sees
+the same deterministic sequence (D1), the service scales horizontally, and a
+reconnect resumes rather than restarts — which matters because Render's free
+tier sleeps after fifteen minutes.

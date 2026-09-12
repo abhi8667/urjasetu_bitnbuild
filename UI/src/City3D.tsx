@@ -67,8 +67,31 @@ const NIGHT_PALETTE = {
   stressRed: '#ef4444',    // Overload alert
 }
 
-const buildingHeight = (house: SceneHouse) =>
-  house.kind === 'evhub' ? 1.25 : 1.1 + (Number(house.id.replace(/\D/g, '')) % 4) * 0.48
+/**
+ * Storey height from what the premises IS, not from its meter number.
+ *
+ * This used to be `1.1 + (digits of house.id % 4) * 0.48` — the building's
+ * height was a hash of its meter id. That happened to look varied against the
+ * fixture's sequential H-01..H-60, but the registry's real ids are numeric
+ * strings in blocks (10000-, 20000-, 30000-), so the hash collapses: whole
+ * transformers come out the same height, and an apartment block renders the
+ * same as a bungalow.
+ *
+ * `building_type` is in the registry and now travels with the scene, so an
+ * apartment is tall, a commercial unit is broad and mid-rise, and a house is
+ * low. Rooftop PV capacity adds a little on top, so a 6 kWp roof reads as a
+ * bigger building than a 1.5 kWp one.
+ */
+const buildingHeight = (house: SceneHouse) => {
+  if (house.kind === 'evhub' || house.building_type === 'evhub') return 1.25
+  const base =
+    house.building_type === 'apt' ? 2.35 : house.building_type === 'com' ? 1.75 : 1.15
+  // Deterministic per-premises variation so a terrace is not a flat wall, keyed
+  // off the surveyed distance from the transformer rather than the id.
+  const jitter = ((Math.round((house.distance_m ?? 0) * 7) % 5) / 5) * 0.35
+  const pvBonus = Math.min(0.4, (house.pv_kw ?? 0) * 0.05)
+  return base + jitter + pvBonus
+}
 
 function cityLayout(scene: ScenePayload) {
   const layout = layoutScene(scene)
@@ -665,34 +688,59 @@ function StreetLight({ position }: { position: Point }) {
 function CameraRig({
   mode,
   selectedFocus,
+  extent,
 }: {
   mode: CameraMode
   selectedFocus: Point | null
+  /** Largest world-space dimension of the laid-out street. */
+  extent: number
 }) {
   const controlsRef = useRef<any>(null)
   const { camera } = useThree()
 
   useEffect(() => {
     if (!controlsRef.current) return
+    // Frame whatever the layout produced instead of a constant.
+    //
+    // Every camera position below was tuned by hand against the old schematic
+    // layout, whose extent was a fixed ~37 world units because it was a grid of
+    // rows. The real surveyed layout has a different extent and a different
+    // aspect, so the hand-tuned numbers put the whole street outside the
+    // frustum — the 3D view came back showing roads and streetlights and not
+    // one building. `k` rescales them to the layout actually in hand.
+    // Distance that actually fits `extent` in a 42-degree frustum, rather than
+    // a hand-tuned magnitude: half the extent over tan(fov/2), plus a margin so
+    // the street is not flush against the edges. Placing the camera along the
+    // same unit direction as before keeps each view's ANGLE, which was the part
+    // of the original tuning worth preserving.
+    const fit = (extent / 2) / Math.tan((42 * Math.PI) / 180 / 2)
+    const along = (dir: [number, number, number], distance: number): [number, number, number] => {
+      const length = Math.hypot(dir[0], dir[1], dir[2]) || 1
+      return [
+        (dir[0] / length) * distance,
+        (dir[1] / length) * distance,
+        (dir[2] / length) * distance,
+      ]
+    }
 
     if (mode === 'top-down') {
-      camera.position.set(0, 52, 0.01)
+      camera.position.set(0, Math.max(30, fit * 1.05), 0.01)
       controlsRef.current.target.set(0, 0, 0)
       controlsRef.current.maxPolarAngle = 0.05
       controlsRef.current.minPolarAngle = 0
       controlsRef.current.enableRotate = false
     } else if (mode === 'perspective') {
-      camera.position.set(16, 9, 24)
+      camera.position.set(...along([16, 9, 24], Math.max(24, fit * 1.15)))
       controlsRef.current.target.set(0, 1.2, 0)
       controlsRef.current.maxPolarAngle = Math.PI / 2 - 0.05
       controlsRef.current.minPolarAngle = 0.2
       controlsRef.current.enableRotate = true
     } else {
       if (selectedFocus) {
-        camera.position.set(selectedFocus[0] + 12, 14, selectedFocus[2] + 14)
+        camera.position.set(selectedFocus[0] + 12, 14, selectedFocus[2] + 14)  // focus is absolute, not scaled
         controlsRef.current.target.set(selectedFocus[0], 0.8, selectedFocus[2])
       } else {
-        camera.position.set(22, 24, 26)
+        camera.position.set(...along([22, 24, 26], Math.max(28, fit * 1.2)))
         controlsRef.current.target.set(0, 0, 0)
       }
       controlsRef.current.maxPolarAngle = 1.35
@@ -700,7 +748,7 @@ function CameraRig({
       controlsRef.current.enableRotate = true
     }
     controlsRef.current.update()
-  }, [mode, selectedFocus, camera])
+  }, [mode, selectedFocus, camera, extent])
 
   return (
     <OrbitControls
@@ -709,7 +757,7 @@ function CameraRig({
       enableDamping
       dampingFactor={0.06}
       minDistance={6}
-      maxDistance={85}
+      maxDistance={Math.max(85, extent * 2.6)}
       enablePan={true}
     />
   )
@@ -745,7 +793,11 @@ function CityScene({
 
   return (
     <>
-      <CameraRig mode={cameraMode} selectedFocus={selectedPoint} />
+      <CameraRig
+        mode={cameraMode}
+        selectedFocus={selectedPoint}
+        extent={Math.max(layout.width, layout.depth)}
+      />
 
       {/* Luminous Twilight Atmosphere */}
       <color attach="background" args={[NIGHT_PALETTE.background]} />

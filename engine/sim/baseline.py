@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from engine import algo
 from engine.config import Config
 from engine.domain import BillLine, House, Transformer
+from engine.physics import apparent_kva
 
 
 @dataclass(frozen=True)
@@ -138,11 +139,12 @@ class Baseline:
     def _loss_of_life(self, ticks) -> float:
         """Shares D's thermal model so the comparison is apples to apples.
 
-        While `algo.thermal.ageing_factor` is still a stub returning 1.0, this
-        figure is load-independent and the baseline and P2P sides come out
-        equal. The comparison machinery is correct; the divergence arrives with
-        D's real C57.91 model AND C's reshaping — until trades change physical
-        flows, net metering and P2P age the iron identically.
+        Goes through `engine.physics.apparent_kva` rather than an inline
+        `/ 0.95`, so the counterfactual measures loading exactly the way the
+        health agent it is compared against measures it. F_AA is exponential in
+        hot-spot temperature; a 5% disagreement in K is not a rounding
+        difference, and a comparison between two differently-measured sides is
+        not a comparison.
         """
         by_transformer: dict[str, float] = defaultdict(float)
         ambient = ticks[0].ambient_c if ticks else 25.0
@@ -153,7 +155,8 @@ class Baseline:
                     tick.load_kwh - tick.gen_kwh) / self.config.block_hours
         life = 0.0
         for transformer in self.transformers:
-            kva = by_transformer.get(transformer.transformer_id, 0.0) / 0.95
+            kva = apparent_kva(by_transformer.get(transformer.transformer_id, 0.0),
+                               self.config.power_factor)
             hotspot = algo.thermal.hotspot_c(kva, transformer.rating_kva, ambient)
             life += algo.thermal.loss_of_life_hours(hotspot, self.config.block_hours)
         return life
@@ -191,7 +194,8 @@ def p2p_economics(feed, config: Config, ledger: list[BillLine],
             bought[line.house_id] += line.quantity_kwh
             spend[line.house_id] += line.net_inr
             charges += (line.transaction_inr + line.wheeling_inr
-                        + line.cross_subsidy_inr + line.ageing_inr)
+                        + line.cross_subsidy_inr + line.ageing_inr
+                        + line.platform_inr + line.gst_inr)
         elif line.role == "seller":
             sold[line.house_id] += line.quantity_kwh
             earned[line.house_id] += -line.net_inr
