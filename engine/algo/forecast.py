@@ -3,9 +3,21 @@ from __future__ import annotations
 
 
 def ewma(history: list[float], alpha: float = 0.3) -> float:
-    """STUB: last observation, or 0.0 on an empty history.
+    """Exponentially weighted mean, most recent weighted highest.
 
-    Real implementation: exponentially weighted mean over the same block-of-day
-    across the last 7 simulated days.
+    Empty history returns 0.0. Single value returns that value.
+
+    Recursive form (seeded on the first observation, matching pandas'
+    ewm(adjust=False)):
+        S_1 = x_1
+        S_t = alpha * x_t + (1 - alpha) * S_(t-1)
+
+    The caller supplies same-block-of-day history; this function does not
+    know about blocks or days.
     """
-    return history[-1] if history else 0.0
+    if not history:
+        return 0.0
+    result = history[0]
+    for x in history[1:]:
+        result = alpha * x + (1 - alpha) * result
+    return result

@@ -1,29 +1,36 @@
 """Uniform-price double auction. Target hour 6."""
 from __future__ import annotations
 
+from dataclasses import replace
+
 from engine.domain import ClearingResult, Order, Trade
 
 
 def clear(orders: list[Order]) -> ClearingResult:
-    """STUB: greedy price-time match, no uniform pricing.
+    """Uniform-price double auction (PRD §6.3).
 
-    Real implementation (PRD §6.3): sort offers ascending and bids descending by
-    limit_price, walk both while bid.limit >= offer.limit, partial fills
-    permitted, clearing_price is the midpoint of the LAST matched pair, and
-    every trade settles at clearing_price rather than at its own limit.
+    Offers sorted ascending, bids sorted descending by limit_price (tie-break
+    by order_id, so identical input always produces identical output). Walk
+    both while bid.limit >= offer.limit; partial fills are permitted.
+    clearing_price is the midpoint of the LAST matched pair's limit prices —
+    every trade settles there, not at its own limit.
 
-    Invariants MK1 (traded <= min(offered, bid)), MK2 (seller.limit <= price <=
-    buyer.limit), MK3 (identical input -> identical output, trade_ids included).
+    Invariants:
+      MK1  total traded <= min(total offered, total bid)
+      MK2  seller.limit <= clearing_price <= buyer.limit, for every trade
+      MK3  identical order lists -> identical trade lists, including trade_ids
     """
     offers = sorted([o for o in orders if o.side == "offer"],
                     key=lambda o: (o.limit_price, o.order_id))
     bids = sorted([o for o in orders if o.side == "bid"],
                   key=lambda o: (-o.limit_price, o.order_id))
+
     trades: list[Trade] = []
     price: float | None = None
     i = j = 0
     rem_o = [o.quantity_kwh for o in offers]
     rem_b = [b.quantity_kwh for b in bids]
+
     while i < len(offers) and j < len(bids):
         if bids[j].limit_price < offers[i].limit_price:
             break
@@ -35,7 +42,7 @@ def clear(orders: list[Order]) -> ClearingResult:
             seller_id=offers[i].house_id,
             buyer_id=bids[j].house_id,
             quantity_kwh=qty,
-            clearing_price=price,
+            clearing_price=price,          # provisional, rewritten below
             curtailed_fraction=0.0,
         ))
         rem_o[i] -= qty
@@ -44,10 +51,24 @@ def clear(orders: list[Order]) -> ClearingResult:
             i += 1
         if rem_b[j] <= 1e-9:
             j += 1
-    trades = [Trade(**{**t.__dict__, "clearing_price": price}) for t in trades]
+
+    # Every trade settles at the LAST matched pair's midpoint, not its own —
+    # rewrite all trades' price in one pass. dataclasses.replace() is used
+    # instead of **t.__dict__ so this still works if Trade ever adds __slots__.
+    if price is not None:
+        trades = [replace(t, clearing_price=price) for t in trades]
+
+    # Unmatched orders must carry their REMAINING quantity, not the original —
+    # otherwise a partially-filled order looks fully untraded to whoever
+    # carries these into the next block's order book (silent double-count).
+    unmatched_offers = [replace(o, quantity_kwh=rem_o[k])
+                        for k, o in enumerate(offers) if rem_o[k] > 1e-9]
+    unmatched_bids = [replace(b, quantity_kwh=rem_b[k])
+                      for k, b in enumerate(bids) if rem_b[k] > 1e-9]
+
     return ClearingResult(
         trades=trades,
         clearing_price=price,
-        unmatched_offers=[o for k, o in enumerate(offers) if rem_o[k] > 1e-9],
-        unmatched_bids=[b for k, b in enumerate(bids) if rem_b[k] > 1e-9],
+        unmatched_offers=unmatched_offers,
+        unmatched_bids=unmatched_bids,
     )
