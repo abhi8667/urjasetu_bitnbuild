@@ -19,7 +19,7 @@
 
 ## 1. The project in one paragraph
 
-Fifty houses on a simulated Indian street, three transformers. Software agents bargain on behalf of each house every fifteen minutes — solar houses offer surplus, others bid for what they need. A second set of agents checks whether the resulting trades would overload a transformer, and if so reshapes them rather than cancelling them: everyone sells a little less, batteries absorb the rest, and the energy comes back out at the evening peak. A health agent tracks how much life each transformer just burned and prices that wear back into tomorrow's trades. The result is a street that trades power with itself in a way that keeps its own equipment alive — and a side-by-side comparison proving it beats net metering on household bills, DISCOM revenue, and transformer lifespan simultaneously.
+Sixty metered premises on a simulated Whitefield street, four transformers. Software agents bargain on behalf of each premises every hour — solar houses offer surplus, others bid for what they need. A second set of agents checks whether the resulting trades would overload a transformer, and if so reshapes them rather than cancelling them: everyone sells a little less, batteries absorb the rest, and the energy comes back out at the evening peak. A health agent tracks how much life each transformer just burned and prices that wear back into tomorrow's trades. The result is a street that trades power with itself in a way that keeps its own equipment alive — and a side-by-side comparison proving it beats net metering on household bills, DISCOM revenue, and transformer lifespan simultaneously.
 
 ---
 

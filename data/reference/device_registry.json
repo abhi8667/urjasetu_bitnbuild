@@ -1,0 +1,1862 @@
+[
+  {
+    "meter_id": "10000",
+    "building_name": "DT-1-B01",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.972994,
+      "lon": 77.74447,
+      "address": "Plot 1, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 125.0,
+      "distance_from_substation_m": 696.6
+    },
+    "trading": {
+      "transmission_loss_pct": 5.5,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": true
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "10001",
+    "building_name": "DT-1-B02",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.973114,
+      "lon": 77.744196,
+      "address": "Plot 2, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 147.7,
+      "distance_from_substation_m": 728.9
+    },
+    "trading": {
+      "transmission_loss_pct": 5.95,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": true
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "10002",
+    "building_name": "DT-1-B03",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.973265,
+      "lon": 77.744735,
+      "address": "Plot 3, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 86.9,
+      "distance_from_substation_m": 688.4
+    },
+    "trading": {
+      "transmission_loss_pct": 4.74,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": true
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "10003",
+    "building_name": "DT-1-B04",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.974786,
+      "lon": 77.745885,
+      "address": "Plot 4, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 149.0,
+      "distance_from_substation_m": 711.5
+    },
+    "trading": {
+      "transmission_loss_pct": 5.98,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": true
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "10004",
+    "building_name": "DT-1-B05",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.972205,
+      "lon": 77.744677,
+      "address": "Plot 5, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 169.4,
+      "distance_from_substation_m": 635.8
+    },
+    "trading": {
+      "transmission_loss_pct": 6.39,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "10005",
+    "building_name": "DT-1-B06",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.972477,
+      "lon": 77.744373,
+      "address": "Plot 6, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 166.9,
+      "distance_from_substation_m": 678.5
+    },
+    "trading": {
+      "transmission_loss_pct": 6.34,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "10006",
+    "building_name": "DT-1-B07",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.972359,
+      "lon": 77.74571,
+      "address": "Plot 7, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 128.9,
+      "distance_from_substation_m": 545.0
+    },
+    "trading": {
+      "transmission_loss_pct": 5.58,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 15,
+      "has_battery": true,
+      "battery_capacity_kwh": 10,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "10007",
+    "building_name": "DT-1-B08",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.973842,
+      "lon": 77.745489,
+      "address": "Plot 8, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 38.0,
+      "distance_from_substation_m": 664.0
+    },
+    "trading": {
+      "transmission_loss_pct": 3.76,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "10008",
+    "building_name": "DT-1-B09",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.973746,
+      "lon": 77.745362,
+      "address": "Plot 9, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 31.2,
+      "distance_from_substation_m": 667.2
+    },
+    "trading": {
+      "transmission_loss_pct": 3.62,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 15,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "10009",
+    "building_name": "DT-1-B10",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.972298,
+      "lon": 77.744911,
+      "address": "Plot 10, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 148.1,
+      "distance_from_substation_m": 617.4
+    },
+    "trading": {
+      "transmission_loss_pct": 5.96,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "10010",
+    "building_name": "DT-1-B11",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.97289,
+      "lon": 77.746916,
+      "address": "Plot 11, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 167.8,
+      "distance_from_substation_m": 479.3
+    },
+    "trading": {
+      "transmission_loss_pct": 6.36,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 15,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "10011",
+    "building_name": "DT-1-B12",
+    "building_type": "com",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.974745,
+      "lon": 77.745269,
+      "address": "Plot 12, ITPL Commercial Hub Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-1",
+      "feeder_id": "F1",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 140.7,
+      "distance_from_substation_m": 751.8
+    },
+    "trading": {
+      "transmission_loss_pct": 5.81,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": true
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "20012",
+    "building_name": "DT-2-B01",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.97134,
+      "lon": 77.755758,
+      "address": "Plot 1, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 70.1,
+      "distance_from_substation_m": 647.0
+    },
+    "trading": {
+      "transmission_loss_pct": 4.4,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "20013",
+    "building_name": "DT-2-B02",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.972777,
+      "lon": 77.757512,
+      "address": "Plot 2, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 178.9,
+      "distance_from_substation_m": 878.7
+    },
+    "trading": {
+      "transmission_loss_pct": 6.58,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "20014",
+    "building_name": "DT-2-B03",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.972464,
+      "lon": 77.755638,
+      "address": "Plot 3, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 95.7,
+      "distance_from_substation_m": 678.9
+    },
+    "trading": {
+      "transmission_loss_pct": 4.91,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "20015",
+    "building_name": "DT-2-B04",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.971181,
+      "lon": 77.755863,
+      "address": "Plot 4, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 77.9,
+      "distance_from_substation_m": 653.6
+    },
+    "trading": {
+      "transmission_loss_pct": 4.56,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": true
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "20016",
+    "building_name": "DT-2-B05",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.971385,
+      "lon": 77.756527,
+      "address": "Plot 5, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 58.2,
+      "distance_from_substation_m": 728.9
+    },
+    "trading": {
+      "transmission_loss_pct": 4.16,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "20017",
+    "building_name": "DT-2-B06",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.970735,
+      "lon": 77.755455,
+      "address": "Plot 6, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 143.3,
+      "distance_from_substation_m": 600.2
+    },
+    "trading": {
+      "transmission_loss_pct": 5.87,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "20018",
+    "building_name": "DT-2-B07",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.970841,
+      "lon": 77.75591,
+      "address": "Plot 7, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 111.2,
+      "distance_from_substation_m": 650.8
+    },
+    "trading": {
+      "transmission_loss_pct": 5.22,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": true,
+      "battery_capacity_kwh": 10,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "20019",
+    "building_name": "DT-2-B08",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.972393,
+      "lon": 77.757635,
+      "address": "Plot 8, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 168.9,
+      "distance_from_substation_m": 876.1
+    },
+    "trading": {
+      "transmission_loss_pct": 6.38,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "20020",
+    "building_name": "DT-2-B09",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.970797,
+      "lon": 77.755245,
+      "address": "Plot 9, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 152.1,
+      "distance_from_substation_m": 579.0
+    },
+    "trading": {
+      "transmission_loss_pct": 6.04,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": true,
+      "battery_capacity_kwh": 10,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "20021",
+    "building_name": "DT-2-B10",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.971118,
+      "lon": 77.754737,
+      "address": "Plot 10, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 175.7,
+      "distance_from_substation_m": 533.8
+    },
+    "trading": {
+      "transmission_loss_pct": 6.51,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "20022",
+    "building_name": "DT-2-B11",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.973102,
+      "lon": 77.756762,
+      "address": "Plot 11, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 157.1,
+      "distance_from_substation_m": 819.6
+    },
+    "trading": {
+      "transmission_loss_pct": 6.14,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "20023",
+    "building_name": "DT-2-B12",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.971675,
+      "lon": 77.757294,
+      "address": "Plot 12, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 119.4,
+      "distance_from_substation_m": 817.4
+    },
+    "trading": {
+      "transmission_loss_pct": 5.39,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "20024",
+    "building_name": "DT-2-B13",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.971507,
+      "lon": 77.755888,
+      "address": "Plot 13, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 47.0,
+      "distance_from_substation_m": 665.6
+    },
+    "trading": {
+      "transmission_loss_pct": 3.94,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "20025",
+    "building_name": "DT-2-B14",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.970556,
+      "lon": 77.755341,
+      "address": "Plot 14, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 166.7,
+      "distance_from_substation_m": 584.8
+    },
+    "trading": {
+      "transmission_loss_pct": 6.33,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": true
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "20026",
+    "building_name": "DT-2-B15",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.971992,
+      "lon": 77.756308,
+      "address": "Plot 15, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 24.3,
+      "distance_from_substation_m": 725.7
+    },
+    "trading": {
+      "transmission_loss_pct": 3.49,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "20027",
+    "building_name": "DT-2-B16",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.972876,
+      "lon": 77.756536,
+      "address": "Plot 16, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 125.1,
+      "distance_from_substation_m": 786.5
+    },
+    "trading": {
+      "transmission_loss_pct": 5.5,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": true,
+      "battery_capacity_kwh": 10,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "20028",
+    "building_name": "DT-2-B17",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.971726,
+      "lon": 77.755065,
+      "address": "Plot 17, Kadugodi Residential Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-2",
+      "feeder_id": "F2",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 123.3,
+      "distance_from_substation_m": 589.1
+    },
+    "trading": {
+      "transmission_loss_pct": 5.47,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "30029",
+    "building_name": "DT-3-B01",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.965754,
+      "lon": 77.743578,
+      "address": "Plot 1, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 132.5,
+      "distance_from_substation_m": 828.6
+    },
+    "trading": {
+      "transmission_loss_pct": 5.65,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 8,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "30030",
+    "building_name": "DT-3-B02",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.965847,
+      "lon": 77.74393,
+      "address": "Plot 2, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 94.4,
+      "distance_from_substation_m": 791.1
+    },
+    "trading": {
+      "transmission_loss_pct": 4.89,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "30031",
+    "building_name": "DT-3-B03",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966542,
+      "lon": 77.744204,
+      "address": "Plot 3, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 104.8,
+      "distance_from_substation_m": 725.0
+    },
+    "trading": {
+      "transmission_loss_pct": 5.1,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": true
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "30032",
+    "building_name": "DT-3-B04",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.965853,
+      "lon": 77.746004,
+      "address": "Plot 4, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 130.6,
+      "distance_from_substation_m": 616.5
+    },
+    "trading": {
+      "transmission_loss_pct": 5.61,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "30033",
+    "building_name": "DT-3-B05",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966192,
+      "lon": 77.745134,
+      "address": "Plot 5, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 56.7,
+      "distance_from_substation_m": 662.6
+    },
+    "trading": {
+      "transmission_loss_pct": 4.13,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "30034",
+    "building_name": "DT-3-B06",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.96668,
+      "lon": 77.745739,
+      "address": "Plot 6, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 141.2,
+      "distance_from_substation_m": 577.5
+    },
+    "trading": {
+      "transmission_loss_pct": 5.82,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "30035",
+    "building_name": "DT-3-B07",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.965385,
+      "lon": 77.743411,
+      "address": "Plot 7, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 157.4,
+      "distance_from_substation_m": 866.5
+    },
+    "trading": {
+      "transmission_loss_pct": 6.15,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 8,
+      "has_battery": true,
+      "battery_capacity_kwh": 10,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "30036",
+    "building_name": "DT-3-B08",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.965648,
+      "lon": 77.746089,
+      "address": "Plot 8, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 140.7,
+      "distance_from_substation_m": 626.7
+    },
+    "trading": {
+      "transmission_loss_pct": 5.81,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "30037",
+    "building_name": "DT-3-B09",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.964594,
+      "lon": 77.743626,
+      "address": "Plot 9, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 184.8,
+      "distance_from_substation_m": 901.2
+    },
+    "trading": {
+      "transmission_loss_pct": 6.7,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "30038",
+    "building_name": "DT-3-B10",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966157,
+      "lon": 77.745981,
+      "address": "Plot 10, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 134.0,
+      "distance_from_substation_m": 594.8
+    },
+    "trading": {
+      "transmission_loss_pct": 5.68,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "30039",
+    "building_name": "DT-3-B11",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966661,
+      "lon": 77.743575,
+      "address": "Plot 11, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 163.7,
+      "distance_from_substation_m": 778.8
+    },
+    "trading": {
+      "transmission_loss_pct": 6.27,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "30040",
+    "building_name": "DT-3-B12",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.965737,
+      "lon": 77.743852,
+      "address": "Plot 12, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 103.0,
+      "distance_from_substation_m": 804.9
+    },
+    "trading": {
+      "transmission_loss_pct": 5.06,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "30041",
+    "building_name": "DT-3-B13",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.965694,
+      "lon": 77.745518,
+      "address": "Plot 13, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 78.7,
+      "distance_from_substation_m": 666.6
+    },
+    "trading": {
+      "transmission_loss_pct": 4.57,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 8,
+      "has_battery": true,
+      "battery_capacity_kwh": 10,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "30042",
+    "building_name": "DT-3-B14",
+    "building_type": "apt",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.964797,
+      "lon": 77.745994,
+      "address": "Plot 14, Brookefield Apartments Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-3",
+      "feeder_id": "F3",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 170.8,
+      "distance_from_substation_m": 705.6
+    },
+    "trading": {
+      "transmission_loss_pct": 6.42,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "40043",
+    "building_name": "DT-4-B01",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966452,
+      "lon": 77.755059,
+      "address": "Plot 1, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 69.4,
+      "distance_from_substation_m": 662.6
+    },
+    "trading": {
+      "transmission_loss_pct": 4.39,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "40044",
+    "building_name": "DT-4-B02",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966861,
+      "lon": 77.756168,
+      "address": "Plot 2, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 120.0,
+      "distance_from_substation_m": 744.0
+    },
+    "trading": {
+      "transmission_loss_pct": 5.4,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "40045",
+    "building_name": "DT-4-B03",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966938,
+      "lon": 77.754648,
+      "address": "Plot 3, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 139.3,
+      "distance_from_substation_m": 595.8
+    },
+    "trading": {
+      "transmission_loss_pct": 5.79,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": true,
+      "battery_capacity_kwh": 10,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Schneider"
+  },
+  {
+    "meter_id": "40046",
+    "building_name": "DT-4-B04",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.965308,
+      "lon": 77.755261,
+      "address": "Plot 4, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 81.2,
+      "distance_from_substation_m": 757.9
+    },
+    "trading": {
+      "transmission_loss_pct": 4.62,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "40047",
+    "building_name": "DT-4-B05",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966467,
+      "lon": 77.756429,
+      "address": "Plot 5, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 113.3,
+      "distance_from_substation_m": 789.1
+    },
+    "trading": {
+      "transmission_loss_pct": 5.27,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "40048",
+    "building_name": "DT-4-B06",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966091,
+      "lon": 77.755569,
+      "address": "Plot 6, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 12.6,
+      "distance_from_substation_m": 730.9
+    },
+    "trading": {
+      "transmission_loss_pct": 3.25,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "40049",
+    "building_name": "DT-4-B07",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966794,
+      "lon": 77.754467,
+      "address": "Plot 7, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 142.6,
+      "distance_from_substation_m": 588.2
+    },
+    "trading": {
+      "transmission_loss_pct": 5.85,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "40050",
+    "building_name": "DT-4-B08",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.9655,
+      "lon": 77.755554,
+      "address": "Plot 8, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 55.9,
+      "distance_from_substation_m": 768.6
+    },
+    "trading": {
+      "transmission_loss_pct": 4.12,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Genus"
+  },
+  {
+    "meter_id": "40051",
+    "building_name": "DT-4-B09",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.967102,
+      "lon": 77.754193,
+      "address": "Plot 9, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 187.3,
+      "distance_from_substation_m": 544.5
+    },
+    "trading": {
+      "transmission_loss_pct": 6.75,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": true,
+      "battery_capacity_kwh": 10,
+      "has_home_ev_charger": true
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "40052",
+    "building_name": "DT-4-B10",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966177,
+      "lon": 77.756267,
+      "address": "Plot 10, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 85.4,
+      "distance_from_substation_m": 789.6
+    },
+    "trading": {
+      "transmission_loss_pct": 4.71,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "40053",
+    "building_name": "DT-4-B11",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966554,
+      "lon": 77.755359,
+      "address": "Plot 11, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 63.5,
+      "distance_from_substation_m": 683.7
+    },
+    "trading": {
+      "transmission_loss_pct": 4.27,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "40054",
+    "building_name": "DT-4-B12",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966573,
+      "lon": 77.756611,
+      "address": "Plot 12, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 136.2,
+      "distance_from_substation_m": 801.2
+    },
+    "trading": {
+      "transmission_loss_pct": 5.72,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "40055",
+    "building_name": "DT-4-B13",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.966977,
+      "lon": 77.75443,
+      "address": "Plot 13, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 158.9,
+      "distance_from_substation_m": 573.6
+    },
+    "trading": {
+      "transmission_loss_pct": 6.18,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": true
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "40056",
+    "building_name": "DT-4-B14",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.965794,
+      "lon": 77.754652,
+      "address": "Plot 14, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 94.7,
+      "distance_from_substation_m": 672.7
+    },
+    "trading": {
+      "transmission_loss_pct": 4.89,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "40057",
+    "building_name": "DT-4-B15",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.967263,
+      "lon": 77.755923,
+      "address": "Plot 15, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 147.7,
+      "distance_from_substation_m": 701.1
+    },
+    "trading": {
+      "transmission_loss_pct": 5.95,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Indra"
+  },
+  {
+    "meter_id": "40058",
+    "building_name": "DT-4-B16",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.967344,
+      "lon": 77.754673,
+      "address": "Plot 16, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 174.3,
+      "distance_from_substation_m": 575.3
+    },
+    "trading": {
+      "transmission_loss_pct": 6.49,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": false,
+      "solar_capacity_kw": 0,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  },
+  {
+    "meter_id": "40059",
+    "building_name": "DT-4-B17",
+    "building_type": "res",
+    "install_date": "2025-03-15",
+    "location": {
+      "lat": 12.965031,
+      "lon": 77.755995,
+      "address": "Plot 17, Whitefield Central Layout, Whitefield, Bengaluru 560066"
+    },
+    "network": {
+      "transformer_id": "DT-4",
+      "feeder_id": "F4",
+      "substation": "Whitefield 66/11 kV",
+      "distance_from_dt_m": 120.4,
+      "distance_from_substation_m": 838.6
+    },
+    "trading": {
+      "transmission_loss_pct": 5.41,
+      "eligible_trade_partners": "same transformer_id only (per KERC P2P physical constraint)"
+    },
+    "equipment": {
+      "has_rooftop_solar": true,
+      "solar_capacity_kw": 3,
+      "has_battery": false,
+      "battery_capacity_kwh": 0,
+      "has_home_ev_charger": false
+    },
+    "meter_type": "smart_meter_dlms_cosem",
+    "meter_make": "Landis+Gyr"
+  }
+]

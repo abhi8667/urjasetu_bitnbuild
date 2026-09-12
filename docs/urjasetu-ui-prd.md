@@ -24,7 +24,7 @@ Rules for the executing agent:
 
 ### In scope
 
-- Isometric 2.5D city visualisation of 50 houses and 3 transformers
+- Isometric 2.5D city visualisation of 60 premises and 4 transformers (plus 4 shared EV hubs, 64 nodes)
 - Five screens (§8)
 - Transport layer with live and replay adapters behind one interface
 - Two live demo controls: transformer derate, cloud bank
@@ -120,7 +120,7 @@ No hover transitions on panels. No entrance animations on screen change. Motion 
 ## 3. Reference scene
 
 ```
-houses:        50
+houses:        60   # 64 nodes including the 4 shared EV hubs
 transformers:  3
 cluster split: 17 / 17 / 16
 blocks/day:    96
@@ -204,7 +204,7 @@ interface Transport {
 True isometric, 30° axes.
 
 ```js
-const S = 34;              // tile size in px, tuned to fit 50 houses at 1920px
+const S = 30;              // tile size in px, tuned to fit 64 nodes at 1920px
 const COS30 = Math.cos(Math.PI / 6);
 const SIN30 = 0.5;
 
@@ -269,7 +269,7 @@ The signature element. One arc per trade, seller to buyer.
 - Arc stroke is `--export` fading to `--import` along its length, 1.5px, 0.35 opacity.
 - A curtailed trade draws its arc dashed and in `--curtailed`.
 
-**Cap: 12 concurrent arcs per block**, selected as the 12 largest by kWh. Remaining trades are summarised as a count in the bottom strip. At 50 houses, drawing every arc produces unreadable spaghetti; this is a hard limit, not a performance tuning value.
+**Cap: 12 concurrent arcs per block**, selected as the 12 largest by kWh. Remaining trades are summarised as a count in the bottom strip. At 60 premises, drawing every arc produces unreadable spaghetti; this is a hard limit, not a performance tuning value.
 
 Arcs stagger by 40ms in descending size order so the largest trades read first.
 
@@ -291,7 +291,7 @@ This is the demo's climax and is the only place in the interface where sequencin
 
 ### 8.4 Budgets
 
-- 60fps sustained at 50 houses with 12 arcs
+- 60fps sustained at 64 nodes with 12 arcs
 - Arc animation via CSS transforms only; no per-frame JS layout
 - One `requestAnimationFrame` loop for the whole scene, not one per element
 - Full block render under 16ms, measured by acceptance check §13.6
@@ -400,7 +400,7 @@ The interface never shows a blank screen or a spinner after first paint. A stale
 | Stage | Work | Checkpoint |
 |---|---|---|
 | 1 | Shell, tokens, keyboard routing, `ReplayTransport` against a fixture file | Keys 1–5 switch between five placeholder screens |
-| 2 | Projection, layout algorithm, static city render | 50 houses and 3 transformers render in correct isometric order from a fixture scene |
+| 2 | Projection, layout algorithm, static city render | 64 nodes and 4 transformers render in correct isometric order from a fixture scene |
 | 3 | Block subscription, house and transformer colour encoding | Scene recolours correctly stepping through 96 fixture blocks |
 | 4 | `TracePanel`, `MetricStrip`, `StatusBadge` | City screen complete except motion |
 | 5 | Wire pulses and trade arcs with the 12-arc cap | Arcs render at 60fps across a full fixture day |
@@ -420,7 +420,7 @@ The interface never shows a blank screen or a spinner after first paint. A stale
 
 1. **Replay parity.** Every screen renders identically under `ReplayTransport` and `LiveTransport` given the same run.
 2. **Determinism of layout.** The same scene payload produces pixel-identical city geometry across reloads.
-3. **Topology independence.** Renders correctly with 30 houses / 1 transformer and 50 houses / 3 transformers, no code changes.
+3. **Topology independence.** Renders correctly with 30 houses / 1 transformer and 64 nodes / 4 transformers, no code changes.
 4. **Arc cap.** A block with 30 trades renders exactly 12 arcs and reports the remainder in the strip.
 5. **Reshape choreography.** The full sequence fires, in order, within 1.2s of a `reshaped` block arriving.
 6. **Frame budget.** 60fps sustained through a full simulated day at the reference scene; no block render exceeds 16ms.
@@ -449,7 +449,7 @@ The interface never shows a blank screen or a spinner after first paint. A stale
 | Data source | Live with replay fallback | Live is the honest claim; replay is the insurance |
 | Rendering | Isometric 2.5D SVG | Most of the visual payoff of 3D at a quarter of the build cost, and nothing to fumble on a projector |
 | Camera | Fixed, none | Removes a class of live-demo accidents |
-| Scene | 50 houses, 3 transformers | Enough density to look like a colony; enough transformers for the ageing signal to route around one |
+| Scene | 60 premises + 4 EV hubs, 4 transformers | Enough density to look like a colony; enough transformers for the ageing signal to route around one |
 | Arcs | House-to-house, capped at 12 | Below the cap it reads as trading; above it reads as noise |
 | Screens | Five | City and compare carry the demo; the other three answer predictable questions |
 | Controls | Derate and cloud | One tests the fast loop, one tests forecasting; both are visible within two blocks |
