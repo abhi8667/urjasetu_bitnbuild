@@ -131,6 +131,34 @@ class StrategyParams:
 
 
 @dataclass(frozen=True)
+class Site:
+    """Static presentation and settlement metadata that sits beside a House.
+
+    NOT part of Contract 3 — `House` stays exactly as frozen at hour 2. These
+    are registry fields the engine needs but no agent reasons over: real
+    coordinates for A's isometric layout, building type for its sprites, and the
+    per-premises transmission loss that settlement and the FL4 energy-conservation
+    check both need. Looked up by house_id, never re-sent with a reading.
+    """
+    house_id: str
+    transformer_id: str
+    lat: float
+    lon: float
+    building_type: Literal["res", "apt", "com", "evhub"]
+    transmission_loss_pct: float
+
+
+@dataclass(frozen=True)
+class TransformerSite:
+    transformer_id: str
+    name: str
+    lat: float
+    lon: float
+    registry_kva: float        # as installed, per transformer_registry.json
+    feeder_id: str
+
+
+@dataclass(frozen=True)
 class ThermalParams:
     """IEEE C57.91 parameters. Defaults are the standard's oil-immersed
     distribution-transformer values — see DECISIONS.md D6."""

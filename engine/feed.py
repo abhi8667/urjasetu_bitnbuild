@@ -26,7 +26,7 @@ from datetime import date, timedelta
 from functools import cached_property
 
 from engine.config import Config, DEFAULT
-from engine.domain import House, MeterTick, Transformer
+from engine.domain import House, MeterTick, Site, Transformer, TransformerSite
 
 BASE_DAY = date(2025, 9, 12)   # the one measured day in telemetry/
 PHASES = ("A", "B", "C")
@@ -70,6 +70,35 @@ class WhitefieldFeed:
                 replacement_cost_inr=c.replacement_cost_inr,
             ))
         return out
+
+    def sites(self) -> dict[str, Site]:
+        """Static per-premises metadata: coordinates, building type, loss.
+
+        A builds the isometric layout from these coordinates — they are the real
+        Whitefield positions, so the clusters are geographically honest — but A
+        reads them off the `scene` payload B publishes, never out of the JSON.
+        """
+        return dict(self._sites)
+
+    def transformer_sites(self) -> list[TransformerSite]:
+        return [TransformerSite(
+            transformer_id=t["transformer_id"],
+            name=t["name"],
+            lat=float(t["location"]["lat"]),
+            lon=float(t["location"]["lon"]),
+            registry_kva=float(t["kva_rating"]),
+            feeder_id=t["feeder_id"],
+        ) for t in self._transformers]
+
+    def transmission_loss_pct(self, house_id: str) -> float:
+        """Per-premises loss, 3.25-6.75%, derived in the registry from distance
+        to the DT as `3 + 0.02 * distance_m`.
+
+        Settlement must use this figure rather than a flat percentage, and FL4
+        ("generation equals consumption plus net battery change plus losses")
+        has no losses term without it.
+        """
+        return self._sites[house_id].transmission_loss_pct
 
     def ticks(self, block: int) -> list[MeterTick]:
         if not 0 <= block < self.total_blocks():
@@ -159,6 +188,33 @@ class WhitefieldFeed:
                     retail_tariff=self._constants["tariffs"]["bescom_slabs_inr"]["201+"],
                 )
         return houses
+
+    @cached_property
+    def _sites(self) -> dict[str, Site]:
+        sites: dict[str, Site] = {}
+        for entry in self._registry:
+            sites[entry["meter_id"]] = Site(
+                house_id=entry["meter_id"],
+                transformer_id=entry["network"]["transformer_id"],
+                lat=float(entry["location"]["lat"]),
+                lon=float(entry["location"]["lon"]),
+                building_type=entry["building_type"],
+                transmission_loss_pct=float(entry["trading"]["transmission_loss_pct"]),
+            )
+        if self.config.include_ev_hubs_as_houses:
+            dt = {t["transformer_id"]: t for t in self._transformers}
+            for hub_id, tid in sorted({r["hub_id"]: r["transformer_id"] for r in self._hubs}.items()):
+                # The hubs sit at their transformer; loss follows the registry's
+                # own relation, 3 + 0.02 * distance_m, at the 80 m we model.
+                sites[hub_id] = Site(
+                    house_id=hub_id,
+                    transformer_id=tid,
+                    lat=float(dt[tid]["location"]["lat"]),
+                    lon=float(dt[tid]["location"]["lon"]),
+                    building_type="evhub",
+                    transmission_loss_pct=round(3 + 0.02 * 80.0, 2),
+                )
+        return sites
 
     @cached_property
     def _measured(self) -> dict[tuple[str, int], tuple[float, float]]:
