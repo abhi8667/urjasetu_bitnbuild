@@ -24,12 +24,29 @@ from engine.sim.pool import AgentPool
 from engine.sim.runner import Runner
 
 RESULTS = []
+SKIPPED = []
 
 
 def check(name, ok, detail=""):
     RESULTS.append((name, ok))
     print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f" — {detail}" if detail else ""))
     return ok
+
+
+def skip(name, reason):
+    """Record a check that did not run. Never a pass.
+
+    The live Groq check used to call check(..., True, "skipped") and report
+    PASS, so a fully green suite proved nothing about whether the provider was
+    reachable. It was not: every call 403'd on a Cloudflare user-agent block for
+    the entire life of the trading agent, and 145 passing tests said nothing
+    about it. A check that did not run reports SKIP.
+    """
+    SKIPPED.append((name, reason))
+    print(f"  SKIP  {name} — {reason}")
+    if "pytest" in sys.modules:                  # under pytest, skip for real
+        import pytest
+        pytest.skip(reason)
 
 
 def test_risk_agent_learns_from_existing_feed():
@@ -123,7 +140,7 @@ def test_agents_are_connected_to_runner_and_each_other():
 def test_optional_live_groq_smoke():
     if not (os.environ.get("GROQ_API_KEY") and
             os.environ.get("RUN_GROQ_LIVE_TEST") == "1"):
-        check("optional live Groq smoke", True, "skipped; opt in with RUN_GROQ_LIVE_TEST=1")
+        skip("optional live Groq smoke", "opt in with RUN_GROQ_LIVE_TEST=1")
         return
     config = replace(DEFAULT, llm_enabled=True)
     agent = AITradingStrategyAgent(config)
@@ -140,5 +157,6 @@ if __name__ == "__main__":
             RESULTS.append((fn.__name__, False))
             print(f"  ERROR  {fn.__name__}: {type(exc).__name__}: {exc}")
     failed = sum(1 for _, ok in RESULTS if not ok)
-    print(f"\n{len(RESULTS)-failed}/{len(RESULTS)} checks passed")
+    tail = f", {len(SKIPPED)} skipped" if SKIPPED else ""
+    print(f"\n{len(RESULTS)-failed}/{len(RESULTS)} checks passed{tail}")
     raise SystemExit(1 if failed else 0)

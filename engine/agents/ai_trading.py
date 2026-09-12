@@ -80,7 +80,16 @@ class AITradingStrategyAgent:
         request = urllib.request.Request(
             GROQ_CHAT_URL, data=body, method="POST",
             headers={"Authorization": f"Bearer {api_key}",
-                     "Content-Type": "application/json"})
+                     "Content-Type": "application/json",
+                     # urllib otherwise sends "Python-urllib/3.x", which
+                     # Cloudflare rejects with error 1010 BEFORE Groq ever
+                     # evaluates the key. Every call returned 403, both models
+                     # in decide() burned their attempt, and the agent fell back
+                     # to the previous strategy on every simulated day — with a
+                     # perfectly valid key. engine/algo/llm.py was never hit by
+                     # this because httpx sends a User-Agent of its own.
+                     "User-Agent": "UrjaSetu/1.0 (engine agent)",
+                     "Accept": "application/json"})
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
         return payload["choices"][0]["message"]["content"]
