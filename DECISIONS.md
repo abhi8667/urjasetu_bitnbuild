@@ -92,6 +92,41 @@ tests/test_feed_contracts.py` at hour 0 without installing anything. D brings
 `scipy` in with the real LP; B swaps `Config` to pydantic when validation
 earns its keep. Neither changes a signature.
 
+### D7a — pydantic and YAML are optional, which is how §8 and D7 both hold
+
+PRD §8 asks for "a single `config.yaml`, loaded into a `pydantic` model". D7
+above commits the engine to running on a machine with nothing installed. Those
+pull against each other, and the resolution is that neither package is a
+dependency:
+
+- `Config` is declared with `pydantic.dataclasses.dataclass` when pydantic is
+  importable and the stdlib `dataclass` when it is not. The pydantic version is
+  a genuine drop-in — `dataclasses.replace()` and `fields()` both keep working,
+  which matters because every test and scenario in this repo uses `replace()`.
+  A `pydantic.BaseModel` would have broken all of them.
+- `config.yaml` is read when PyYAML is importable and the file exists. Absent
+  either, the declared defaults apply unchanged.
+
+CF1 therefore holds in all four combinations, and the no-packages case — the
+one a teammate has on a fresh clone — is asserted in a subprocess with both
+imports blocked rather than assumed.
+
+Two things the file does beyond §8, because the failure mode is silent:
+
+- An **unrecognised key raises**. A typo like `loadng_limit: 0.9` would
+  otherwise be ignored and the run would proceed on the default, looking
+  correct.
+- **Range validation runs with or without pydantic.** pydantic checks types;
+  nothing checks that `loading_limit: -1` is nonsense. The bounds covered are
+  those that produce a silently wrong run rather than a crash.
+
+`data_dir` is stored relative and resolved against the repo root — an absolute
+path baked in by whoever generated the file would fail on every other machine.
+
+The conversion changed no computed value: a 30-day run before and after is
+identical to the digit (5,582 trades, 4,511.5 kWh, ₹4.76 mean clearing price,
+25.1 h of transformer life saved).
+
 ### D8 — The feed's RNG is separate from the engine's
 
 PRD §3.4 wants one seeded `numpy.random.Generator` on the tick path. The feed's
