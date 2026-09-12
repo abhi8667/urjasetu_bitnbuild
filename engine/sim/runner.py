@@ -59,7 +59,7 @@ class Runner:
                  sentinel: Sentinel | None = None, flow: Flow | None = None,
                  health: Health | None = None, settlement: Settlement | None = None,
                  batteries: Any = None, persist=None, start_block: int = 0,
-                 include_baseline: bool = True):
+                 include_baseline: bool = True, validate_feed: bool = True):
         self.feed = feed
         self.orders = orders
         self.config = config
@@ -74,6 +74,10 @@ class Runner:
         # Resume support (PS1): a run that died at block N restarts here.
         self.start_block = start_block
         self.include_baseline = include_baseline
+        # PRD §12: the engine validates the entire meter feed before block 0.
+        # Off only for tests that deliberately drive a partial or stub feed.
+        self.validate_feed = validate_feed
+        self.feed_validation: dict | None = None
         self.summary: dict | None = None
         self.tick_durations_ms: list[float] = []
 
@@ -98,6 +102,15 @@ class Runner:
 
     def run(self, blocks: int | None = None) -> dict:
         total = blocks if blocks is not None else self.feed.total_blocks()
+
+        # "A run that starts must be able to finish" (PRD §12). A gap found at
+        # block 400 has already burned four hundred blocks and left a
+        # half-written database; the same gap found here costs a tenth of a
+        # second. Validation also warms the feed's tick cache, so the run that
+        # follows is faster for it.
+        if self.validate_feed and hasattr(self.feed, "validate"):
+            self.feed_validation = self.feed.validate()
+
         summary = _Accumulator()
         for block in range(self.start_block, total):
             started = time.perf_counter()

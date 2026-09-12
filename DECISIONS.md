@@ -347,3 +347,35 @@ a transient failure that recovers, a permanent one that raises, exactly two
 attempts, a programming error surfacing unretried on the first attempt, a
 partial block write leaving all four tables empty, and a genuinely read-only
 database on disk.
+
+### D20 — The feed is validated in full before block 0
+
+PRD §12: "Meter feed gap → raise at startup during feed validation, not
+mid-run", and "the engine validates the entire meter feed before block 0. A run
+that starts must be able to finish."
+
+No validation existed. A gap surfaced as a `KeyError` at whatever block it
+happened to hit — block 400, say — by which point four hundred blocks of
+compute are spent, the database holds a partial run, and the cause is hundreds
+of blocks behind the symptom.
+
+`WhitefieldFeed.validate()` now checks the whole feed and raises
+`FeedValidationError` on the first problem, with the block, the premises and
+what was wrong. It covers the defects that would otherwise appear mid-run as a
+crash, a silent zero, or a physically impossible number:
+
+- a premises missing from any block, or a reading for one the registry does not
+  know
+- negative energy, NaN, an ambient temperature outside [-50, 70] °C
+- a premises on a transformer the feed does not define
+- equipment flags contradicting their capacities (`has_pv` with `pv_kw = 0`)
+- a zero retail tariff, an empty premises list, a zero-block feed
+
+**Entire, not sampled.** Checking all 720 blocks costs **0.12 s**, which is
+cheap enough that there is no argument for sampling — and it warms the feed's
+tick cache, so the run that follows is faster for having been validated.
+
+`Runner` calls it before block 0 and records the report on
+`runner.feed_validation`, so a run can show that its feed was verified rather
+than assumed. `validate_feed=False` exists for tests that deliberately drive a
+partial or stub feed, and is the only way to skip it.
