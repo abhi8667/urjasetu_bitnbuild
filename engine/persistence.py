@@ -67,7 +67,7 @@ class Persistence:
                  for b in bills])
         if ageing is not None:
             self.save_transformer_state(block, {
-                "cumulative_life_hours": ageing.cumulative_life_hours,
+                "life_used_frac": ageing.life_used_frac,
                 "ageing_adder": ageing.ageing_adder,
             })
         self.db.commit()

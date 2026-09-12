@@ -153,8 +153,8 @@ class Runner:
         ageing = self.health.apply(result.trades, ticks) if self.health else None
         if ageing is not None:
             self.bus.publish("ageing_applied", block, "health", {
-                "cumulative_life_hours": dict(ageing.cumulative_life_hours),
-                "ageing_adder": dict(ageing.ageing_adder),
+                "life_used_frac": ageing.life_used_frac,
+                "ageing_adder": ageing.ageing_adder,
             })
 
         bills = (self.settlement.settle(result.trades, ageing, block)

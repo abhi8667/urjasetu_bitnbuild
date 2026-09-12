@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engine.agents.settlement import SettlementAgent
 from engine.config import Config
-from engine.domain import AgeingResult, MeterTick, Order, Trade
+from engine.domain import AgeingResult, MeterTick, Order, Trade, TransformerState
 from engine.feed import WhitefieldFeed
 from engine.persistence import Persistence
 from engine.sim.baseline import Baseline, compare, p2p_economics
@@ -48,10 +48,12 @@ class _Health:
         block = ticks[0].block if ticks else 0
         for tid in self.cumulative:
             self.cumulative[tid] += round(0.001 * (block % 7 + 1), 9)
-        return AgeingResult(block=block, hotspot_c={},
-                            loss_of_life_hours={},
-                            cumulative_life_hours=dict(self.cumulative),
-                            ageing_adder={tid: 0.0 for tid in self.cumulative})
+        return AgeingResult(
+            states=[TransformerState(tid, life_used_frac=used, hotspot_c=0.0,
+                                     loading_k=0.0, ageing_adder=0.0)
+                    for tid, used in sorted(self.cumulative.items())],
+            adders={tid: 0.0 for tid in self.cumulative},
+            block=block)
 
 
 # ----------------------------------------------------------- persistence
@@ -89,7 +91,7 @@ def test_ps1_a_killed_run_resumes_without_gap_or_double_count():
 
     block, state = db.load_transformer_state()
     assert block == 499                                        # last completed
-    resumed = _Health(state["cumulative_life_hours"])
+    resumed = _Health(state["life_used_frac"])
     Runner(feed, AgentPool(feed.houses(), CONFIG), CONFIG, health=resumed,
            persist=db, start_block=block + 1).run(blocks=720)
 

@@ -31,15 +31,16 @@ def hotspot_c(load_kva: float, rating_kva: float, ambient_c: float,
 
     K   = load_kva / rating_kva
     dTO = rated_top_oil_rise_c * ((K**2 * THERMAL_R + 1) / (THERMAL_R + 1)) ** oil_exponent_n
-    dH  = rated_hotspot_rise_c * K ** (2 * winding_exponent_m)
+    dH  = hotspot_gradient_c * K ** (2 * winding_exponent_m)
     hotspot_c = ambient_c + dTO + dH
 
-    rated_top_oil_rise_c, rated_hotspot_rise_c, oil_exponent_n, and
-    winding_exponent_m all come from the real domain.py ThermalParams as-is
-    (including its rated_hotspot_rise_c = 80.0 default — not the 25.0 the
-    written spec mentioned; domain.py is the source of truth). THERMAL_R is
-    the one physical constant ThermalParams doesn't carry, so it's a module
-    constant here instead, same treatment as powerflow.py's R/X/V_nom.
+    Parameters come from domain.py ThermalParams. The hot-spot term uses
+    `hotspot_gradient_c` (the winding-to-oil gradient, 80 - 55 = 25 C), NOT
+    `rated_hotspot_rise_c` itself: that 80 C is the TOTAL rise over ambient and
+    already contains the 55 C top-oil rise, so adding both double-counts the oil
+    and yields 165 C at rated load. C57.91 calibrates F_AA = 1.0 at 110 C, which
+    the gradient form reproduces exactly — and which the PRD §6.6 acceptance
+    check requires. THERMAL_R is the one constant ThermalParams doesn't carry.
 
     Zero or negative rating returns ambient unchanged rather than raising —
     matches the "never raises for bad domain input" rule.
@@ -49,7 +50,7 @@ def hotspot_c(load_kva: float, rating_kva: float, ambient_c: float,
 
     K = load_kva / rating_kva
     d_top_oil = params.rated_top_oil_rise_c * ((K**2 * THERMAL_R + 1) / (THERMAL_R + 1)) ** params.oil_exponent_n
-    d_hotspot = params.rated_hotspot_rise_c * K ** (2 * params.winding_exponent_m)
+    d_hotspot = params.hotspot_gradient_c * K ** (2 * params.winding_exponent_m)
     return ambient_c + d_top_oil + d_hotspot
 
 

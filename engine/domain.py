@@ -163,15 +163,30 @@ class TransformerState:
 class AgeingResult:
     """Returned by C's TransformerHealthAgent.apply() for one block.
 
-    `ageing_adder` is per transformer in INR/kWh and applies to block t+1, never
-    retroactively (HL4). Defined here rather than in grid/ so that B and C share
-    one shape.
+    There is exactly one of these, here, so that B and C cannot drift apart:
+    `grid/health.py` imports it rather than defining its own. C constructs it
+    from `states` and `adders`; B reads the dict views below. `adders` is
+    already lagged by one block (HL4) — settlement must not lag it again.
     """
-    block: int
-    hotspot_c: dict[str, float]          # transformer_id -> hot-spot temperature
-    loss_of_life_hours: dict[str, float]  # this block only
-    cumulative_life_hours: dict[str, float]
-    ageing_adder: dict[str, float]        # INR/kWh, for block+1
+    states: list[TransformerState]
+    adders: dict[str, float]          # transformer_id -> INR/kWh for block t+1
+    block: int = 0
+
+    @property
+    def ageing_adder(self) -> dict[str, float]:
+        return dict(self.adders)
+
+    @property
+    def hotspot_c(self) -> dict[str, float]:
+        return {s.transformer_id: s.hotspot_c for s in self.states}
+
+    @property
+    def life_used_frac(self) -> dict[str, float]:
+        return {s.transformer_id: s.life_used_frac for s in self.states}
+
+    @property
+    def loading_k(self) -> dict[str, float]:
+        return {s.transformer_id: s.loading_k for s in self.states}
 
 
 @dataclass(frozen=True)
@@ -217,8 +232,21 @@ class ThermalParams:
     """IEEE C57.91 parameters. Defaults are the standard's oil-immersed
     distribution-transformer values — see DECISIONS.md D6."""
     rated_top_oil_rise_c: float = 55.0
-    rated_hotspot_rise_c: float = 80.0
+    rated_hotspot_rise_c: float = 80.0     # TOTAL rise over ambient at rated load
     oil_resistance_ratio_R: float = 5.0    # ONAN distribution units
     oil_exponent_n: float = 0.8
     winding_exponent_m: float = 0.8
     tau_oil_hours: float = 3.0
+
+    @property
+    def hotspot_gradient_c(self) -> float:
+        """Winding-to-oil gradient at rated load.
+
+        `rated_hotspot_rise_c` is the TOTAL hot-spot rise over ambient (80 C),
+        which already contains the top-oil rise (55 C). Adding both terms to
+        ambient double-counts the oil and puts the hot spot at 165 C at rated
+        load, where IEEE C57.91 calibrates F_AA = 1.0 at 110 C. The gradient is
+        the difference, 25 C, and using it reproduces the standard's reference
+        point exactly. See the PRD §6.6 acceptance check.
+        """
+        return self.rated_hotspot_rise_c - self.rated_top_oil_rise_c

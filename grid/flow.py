@@ -50,7 +50,10 @@ class FlowAgent:
         self.transformers = list(transformers)
         self.houses = list(houses)
         self.config = config
-        self.topology = topology
+        # D's powerflow indexes topology[house_id].distance_m, so default to the
+        # house registry rather than None — passing None crashed every block.
+        self.topology = topology if topology is not None else {
+            h.house_id: h for h in houses}
         self._houses_by_id: dict[str, House] = {h.house_id: h for h in self.houses}
         self._transformers_by_id: dict[str, Transformer] = {t.transformer_id: t for t in self.transformers}
         self._houses_by_transformer: dict[str, list[House]] = {}

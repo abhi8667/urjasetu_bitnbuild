@@ -24,15 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from engine.config import DEFAULT as DEFAULT_CONFIG, Config
-from engine.domain import MeterTick, Trade, Transformer, TransformerState
+from engine.domain import AgeingResult, MeterTick, Trade, Transformer, TransformerState
 from engine import algo
-
-
-@dataclass(frozen=True)
-class AgeingResult:
-    """Result of TransformerHealthAgent.apply for the current block."""
-    states: list[TransformerState]
-    adders: dict[str, float]  # transformer_id -> adder for NEXT block (t+1)
 
 
 class TransformerHealthAgent:

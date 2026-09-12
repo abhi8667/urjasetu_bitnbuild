@@ -1,7 +1,6 @@
 """Constraint-feasible trade reshaping. Target hour 20 — the critical path."""
 from __future__ import annotations
 
-from scipy.optimize import linprog
 
 from engine.domain import ReshapeSolution, Trade
 from engine.algo.powerflow import R_OHM_PER_M, X_OHM_PER_M, V_NOM_V, POWER_FACTOR
@@ -93,6 +92,14 @@ def _bidirectional_row(const, coeffs, limit, A_ub, b_ub):
     """Add |const + coeffs.x| <= limit as two linear rows."""
     A_ub.append(list(coeffs));            b_ub.append(limit - const)
     A_ub.append([-c for c in coeffs]);    b_ub.append(limit + const)
+
+
+def _linprog():
+    """Imported lazily so that `import engine.algo` — and therefore the whole
+    engine, every test suite, and C's grid modules — still works on a machine
+    without scipy. The stub path below never needs it."""
+    from scipy.optimize import linprog
+    return linprog
 
 
 def solve(trades: list[Trade], limits, batteries=None, topology=None) -> ReshapeSolution:
@@ -190,7 +197,7 @@ def solve(trades: list[Trade], limits, batteries=None, topology=None) -> Reshape
             dev_coeffs = [power_coeff * v for v in coeffs]
             _bidirectional_row(dev_const, dev_coeffs, VOLTAGE_BAND, A_ub, b_ub)
 
-    result = linprog(
+    result = _linprog()(
         c=cost,
         A_ub=A_ub if A_ub else None,
         b_ub=b_ub if b_ub else None,

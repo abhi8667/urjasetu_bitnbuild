@@ -221,8 +221,7 @@ def test_cross_subsidy_toggle_changes_only_that_column():
 
 def test_ageing_adder_reaches_the_buyers_bill():
     """C's adder is priced into the trade, not bolted on afterwards."""
-    ageing = AgeingResult(block=0, hotspot_c={}, loss_of_life_hours={},
-                          cumulative_life_hours={}, ageing_adder={"DT-1": 1.5})
+    ageing = AgeingResult(states=[], adders={"DT-1": 1.5}, block=0)
     agent = SettlementAgent(FEED.houses(), CONFIG)
     _, buyer = agent.settle([Trade("T1", 0, "10006", "10000", 2.0, 4.0, 0.0)], ageing)
     assert buyer.ageing_inr == 3.0
