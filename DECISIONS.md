@@ -118,3 +118,37 @@ costs almost nothing. Put transformer life saved and DISCOM revenue on screen
 largest; quote the bill saving honestly as a percentage of the daytime bill.
 `config.max_bid_kwh_per_block` (3.0) caps how much any one buyer can take per
 block, so scarce surplus is competed for rather than swallowed by the first bid.
+
+### D11 — Coordinates, building type and loss reach the engine as `Site`, not on `House`
+
+The registry carries real Whitefield lat/lon for all 60 premises, a
+`building_type` of `res`/`apt`/`com`, and a per-premises `transmission_loss_pct`
+of 3.25–6.75% (exactly `3 + 0.02 × distance_m`). A needs the first two for the
+isometric layout and its sprites; settlement needs the third, and FL4 has no
+losses term without it.
+
+None of them belong on `House` — Contract 3 is frozen and no agent reasons over
+a coordinate. They are exposed as `domain.Site` / `domain.TransformerSite` via
+`feed.sites()`, `feed.transformer_sites()` and `feed.transmission_loss_pct()`.
+A reads coordinates off the `scene` payload B assembles from these, never out of
+the JSON, so the fixture cannot drift from the engine.
+
+`TransformerSite.registry_kva` deliberately keeps the *installed* rating
+(500/250 kVA) visible next to the modelled one, so D1 stays auditable rather
+than looking like a file someone quietly edited.
+
+### D12 — The CSVs are not updated, and here is when that would change
+
+Nothing in the dataset is wrong: every join, conservation identity and physical
+convention checks out. It is insufficient in places, and insufficiency is closed
+in the feed. Editing a generated CSV by hand would break its reproducibility
+from its own script, which is the thing that makes provenance answerable in Q&A.
+
+The one legitimate reason to regenerate is **rooftop solar penetration**. P2P
+covers about 9.5% of demand at 18 of 60 premises, so the household bill saving
+on the compare screen will be modest. `data/scripts/device_registry.py:88`
+(`random() < 0.30`) is the lever; 0.45 takes the market to roughly 15%.
+
+Gate that on the hour-24 compare numbers, not on a hunch. It re-rolls all five
+telemetry files and invalidates the tuned ratings, breach counts and tariffs
+recorded above — budget an hour for the re-tune, and do it once.

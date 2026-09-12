@@ -88,6 +88,34 @@ def test_breaches_are_reachable_and_not_constant():
     assert 60 <= breaches <= 250, f"{breaches} breach blocks in 720 — retune ratings"
 
 
+def test_sites_cover_every_house():
+    sites = FEED.sites()
+    assert set(sites) == {h.house_id for h in FEED.houses()}
+    for site in sites.values():
+        assert -90 <= site.lat <= 90 and -180 <= site.lon <= 180
+        assert site.building_type in ("res", "apt", "com", "evhub")
+        assert 3.0 <= site.transmission_loss_pct <= 7.0
+
+
+def test_transmission_loss_follows_the_registry_relation():
+    """The registry derives loss from distance as 3 + 0.02 * distance_m.
+    Settlement and FL4 both need this per-premises, not a flat percentage."""
+    for house in FEED.houses():
+        if house.house_id.startswith("EVHUB"):
+            continue
+        expected = 3 + 0.02 * house.distance_m
+        assert abs(FEED.transmission_loss_pct(house.house_id) - expected) < 0.06
+
+
+def test_transformer_sites_keep_the_registry_rating_visible():
+    """registry_kva is what the utility installed; transformer.rating_kva is
+    what the engine models. Both must stay legible — see DECISIONS.md D1."""
+    sites = {t.transformer_id: t for t in FEED.transformer_sites()}
+    modelled = {t.transformer_id: t.rating_kva for t in FEED.transformers()}
+    assert sites["DT-1"].registry_kva == 500.0
+    assert modelled["DT-1"] == 125.0
+
+
 def test_feed_is_deterministic():
     a = WhitefieldFeed(Config())
     b = WhitefieldFeed(Config())

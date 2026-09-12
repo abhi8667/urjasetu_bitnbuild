@@ -7,7 +7,13 @@ just the datasets and the scripts that produced them.
 carry — phase, battery power limit, retail tariff, transformer thermal
 parameters, 30 days instead of one — is synthesised in `engine/feed.py` and
 recorded in `DECISIONS.md`. Do not regenerate these files to fix an engine
-problem.
+problem; nothing in them is wrong, and regenerating one re-rolls all five
+telemetry files and invalidates every tuned number in `DECISIONS.md`.
+
+**Only `engine/feed.py` reads these files.** Everyone else goes through
+`feed.houses()`, `feed.transformers()`, `feed.ticks(block)` and `feed.sites()`.
+A second parser means two interpretations of the same number and a bug that
+takes three people to find.
 
 ## Folder structure
 
@@ -99,9 +105,12 @@ reading.
 ```
 
 **Why location matters here:** `transmission_loss_pct` is derived from
-`distance_from_dt_m` using a KERC-consistent distance-based model
-(`3% + up to 5% scaled by distance`). Any P2P settlement calculation should
-pull this per-meter loss figure rather than using a flat percentage.
+`distance_from_dt_m` using a KERC-consistent distance-based model — exactly
+`3 + 0.02 × distance_m`, giving 3.25–6.75% across the fleet. Any P2P settlement
+calculation should pull this per-meter figure rather than using a flat
+percentage, and invariant FL4 ("generation equals consumption plus net battery
+change plus losses") has no losses term without it. Reach it through
+`feed.transmission_loss_pct(house_id)`, not by parsing this file.
 
 **`eligible_trade_partners`** encodes the physical constraint that P2P trades
 can only happen between meters on the same `transformer_id` — electricity
@@ -114,6 +123,15 @@ Fleet-wide: 18 of 60 meters have solar, 8 have a battery, 10 have a home EV char
 ## 4. `reference/transformer_registry.json` — **includes location**
 
 Location + rating for the substation and all 4 distribution transformers.
+
+> **`kva_rating` here is not what the engine models.** These are the ratings as
+> installed (500/250/250/250 kVA). Measured against the telemetry they put peak
+> loading at 21–29%, so no transformer ever breaches and the sentinel, flow
+> agent and ageing signal never fire. The engine overrides them to 125/63/63/63
+> kVA — standard Indian LT sizing for 12–17 premises per DT — in
+> `engine/config.py:rating_kva`. Both numbers stay visible: `feed.transformers()`
+> gives the modelled rating, `feed.transformer_sites()` gives the installed one.
+> Reasoning and measured loadings in `DECISIONS.md` D1.
 
 ```json
 {
