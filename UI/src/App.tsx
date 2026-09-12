@@ -5,18 +5,27 @@ import { createDemoRun } from './demoFixture'
 import { DemoTransport, ReplayTransport } from './transport'
 import type { BlockPayload, EventPayload, RunSummary, ScenePayload, Transport, TransportStatus } from './types'
 
-const screens = ['City', 'Compare', 'Agent theatre', 'DISCOM ledger', 'Household']
+const screens = ['Grid overview', 'Energy impact', 'Agent theatre', 'DISCOM ledger', 'Household']
 const agents = ['prosumer', 'consumer', 'market', 'sentinel', 'flow', 'market', 'settlement']
 const phases = ['Gathering offers', 'Gathering bids', 'Clearing market', 'Constraint check', 'Reshaping flow', 'Re-clearing', 'Settling block']
 const money = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
 const title = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 
-function Icon({ name }: { name: 'shield' | 'cloud' | 'pause' | 'play' }) {
+type IconName = 'shield' | 'cloud' | 'pause' | 'play' | 'grid' | 'chart' | 'agents' | 'ledger' | 'home' | 'bolt' | 'arrow' | 'pin'
+function Icon({ name }: { name: IconName }) {
   const paths = {
     shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />,
     cloud: <path d="M17.5 19H7a5 5 0 1 1 1.7-9.7A7 7 0 0 1 22 12.5 6.5 6.5 0 0 1 17.5 19Z" />,
     pause: <path d="M8 5v14M16 5v14" />,
     play: <path d="m8 5 11 7-11 7Z" />,
+    grid: <><rect x="3" y="3" width="7" height="7" rx="2" /><rect x="14" y="3" width="7" height="7" rx="2" /><rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" /></>,
+    chart: <><path d="M4 3v17h17M8 15l4-5 4 2 5-7" /></>,
+    agents: <><circle cx="12" cy="5" r="3" /><circle cx="5" cy="18" r="3" /><circle cx="19" cy="18" r="3" /><path d="m10 8-4 7m8-7 4 7M8 18h8" /></>,
+    ledger: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
+    home: <><path d="m3 10 9-7 9 7v10H3ZM9 20v-7h6v7" /></>,
+    bolt: <path d="m13 2-9 12h7l-1 8 10-13h-7Z" />,
+    arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
+    pin: <><path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z" /><circle cx="12" cy="10" r="2" /></>,
   }
   return <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
 }
@@ -24,6 +33,7 @@ function Icon({ name }: { name: 'shield' | 'cloud' | 'pause' | 'play' }) {
 function useGridTransport() {
   const liveRun = useMemo(createDemoRun, [])
   const transportRef = useRef<Transport | null>(null)
+  const disconnectRef = useRef<(() => void) | null>(null)
   const [scene, setScene] = useState<ScenePayload | null>(null)
   const [block, setBlock] = useState<BlockPayload | null>(null)
   const [status, setStatus] = useState<TransportStatus>('stale')
@@ -31,7 +41,8 @@ function useGridTransport() {
   const pendingCommands = useRef<Array<{ name: string; issuedAt: number; baselineExporters: number }>>([])
 
   const connect = useCallback((transport: Transport) => {
-    transportRef.current?.stop()
+    disconnectRef.current?.()
+    pendingCommands.current = []
     transportRef.current = transport
     const offs = [
       transport.onScene(setScene),
@@ -58,7 +69,8 @@ function useGridTransport() {
       transport.onStatus(setStatus),
     ]
     transport.start()
-    return () => { offs.forEach((off) => off()); transport.stop() }
+    disconnectRef.current = () => { offs.forEach((off) => off()); transport.stop() }
+    return () => disconnectRef.current?.()
   }, [])
 
   useEffect(() => connect(new DemoTransport(liveRun)), [connect, liveRun])
@@ -70,13 +82,17 @@ function useGridTransport() {
   return { scene, block, status, events, command, replay, summary: liveRun.summary }
 }
 
-function Shell({ active, onNavigate, status, children }: { active: number; onNavigate: (value: number) => void; status: TransportStatus; children: React.ReactNode }) {
+function Shell({ active, onNavigate, status, replay, children }: { active: number; onNavigate: (value: number) => void; status: TransportStatus; replay: () => void; children: React.ReactNode }) {
+  const navIcons: IconName[] = ['grid', 'chart', 'agents', 'ledger', 'home']
   return <div className={`app-shell ${status === 'stale' || status === 'disconnected' ? 'transport-alert' : ''}`}>
     <header className="topbar">
-      <button className="brand" onClick={() => onNavigate(0)} aria-label="Open city screen"><span className="brand-mark">उ</span><span><strong>UrjaSetu</strong><small>Whitefield local energy exchange</small></span></button>
-      <nav aria-label="Main screens">{screens.map((screen, index) => <button key={screen} className={`nav-item ${active === index ? 'active' : ''}`} onClick={() => onNavigate(index)} aria-current={active === index ? 'page' : undefined}><kbd>{index + 1}</kbd><span>{screen}</span></button>)}</nav>
-      <div className={`transport-status status-${status}`}><span />{status === 'live' ? 'Mock live' : status === 'replay' ? 'Replay run' : title(status)}</div>
+      <button className="brand" onClick={() => onNavigate(0)} aria-label="Open city screen"><span className="brand-mark"><Icon name="bolt" /></span><span><strong>UrjaSetu<span className="brand-dot">.</span></strong><small>Power belongs here.</small></span></button>
+      <div className="workspace-label">Your workspace</div>
+      <nav aria-label="Main screens">{screens.map((screen, index) => <button key={screen} className={`nav-item ${active === index ? 'active' : ''}`} onClick={() => onNavigate(index)} aria-label={screen} title={screen} aria-current={active === index ? 'page' : undefined}><Icon name={navIcons[index]} /><span>{screen}</span><kbd>{index + 1}</kbd></button>)}</nav>
+      <div className="sidebar-story"><div className="solar-symbol"><Icon name="bolt" /></div><strong>A little more local.<br />A lot more resilient.</strong><p>Neighbors powering neighbors, one trade at a time.</p><span>Decentralized by design</span></div>
+      <div className="workspace-location"><Icon name="pin" /><span><strong>Whitefield microgrid</strong><small>Bengaluru, India</small></span></div>
     </header>
+    <div className="workspace-top"><div><span>Workspace</span><span className="breadcrumb-slash">/</span><strong>{screens[active]}</strong></div><div className="workspace-actions"><div className={`transport-status status-${status}`}><span />{status === 'live' ? 'Demo simulation' : status === 'replay' ? 'Replay run' : title(status)}</div><button className="replay-button" onClick={replay}><Icon name="play" />Replay</button><span className="operator-avatar" title="Grid operator">OP</span></div></div>
     {status === 'disconnected' && <div className="disconnect-note">Live link lost. Press <kbd>R</kbd> to switch to protected replay.</div>}
     <main>{children}</main>
     <footer className="key-rail"><span>Screen <kbd>1–5</kbd></span><span>Derate <kbd>D</kbd></span><span>Cloud bank <kbd>C</kbd></span><span>Replay <kbd>R</kbd></span><span className="key-rail-note">Demo data · 3D network model</span></footer>
@@ -92,17 +108,22 @@ function CityScreen({ scene, block, status, events, command }: { scene: ScenePay
   const selectedHouse = selected ? scene.houses.find((house) => house.id === selected) : null
   const selectedReading = selected ? block?.houses[selected] : null
   const hidden = Math.max(0, (block?.trades.length ?? 0) - 12)
+  const exporters = Object.values(block?.houses ?? {}).filter((house) => house.state === 'export').length
+  const traded = block?.trades.reduce((total, trade) => total + trade.kwh, 0) ?? 0
   return <section className={`city-screen ${block?.status === 'reshaped' ? 'is-reshaped' : ''}`}>
+    <header className="overview-heading"><div><h1>Your neighborhood. <span>Connected.</span></h1><p>Hyper-local energy. Autonomous agents. A more resilient grid.</p></div><div className="date-chip"><Icon name="pin" /><span>Whitefield, Bengaluru<small>{block ? `Day ${block.day} · ${block.clock} IST` : 'Connecting to simulation'}</small></span></div></header>
+    <div className="metric-strip"><Metric label="Local energy traded" value={traded.toFixed(1)} note="kWh this block" /><Metric label="Clearing price" value={block?.clearing_price == null ? '—' : `₹${block.clearing_price.toFixed(2)}`} note="per kWh · peer-to-peer" /><Metric label="Solar exporters" value={String(exporters)} note={`of ${scene.houses.length} connected nodes`} /><Metric label="Highest grid loading" value={worst ? `${(worst[1].loading * 100).toFixed(0)}%` : '—'} note={`${worst?.[0] ?? 'Waiting'} · transformer capacity`} stress={Boolean(worst && worst[1].loading > 1)} /></div>
     <div className="city-stage">
-      <div className="city-heading"><span>Whitefield, Bengaluru</span><h1>Local energy, in motion</h1><p>{block ? `Day ${block.day} · ${block.clock}` : 'Waiting for first block'}</p></div>
+      <div className="city-heading"><h2>Neighborhood network</h2><p>{scene.houses.length} nodes <span>·</span> {scene.transformers.length} transformers <span>·</span> Interactive 3D</p></div>
       <div className="legend"><span><i className="export-swatch" />Exporting</span><span><i className="import-swatch" />Importing</span><span><i className="stress-swatch" />Over limit</span></div>
+      <select className="node-picker" aria-label="Inspect a network node" value={selected ?? ''} onChange={(event) => setSelected(event.target.value || null)}><option value="">Inspect a node</option>{scene.houses.map((house) => <option key={house.id} value={house.id}>{house.id} ? {house.transformer}</option>)}</select>
       <City3D scene={scene} block={block} selected={selected} onSelect={setSelected} />
-      <p className="camera-hint">Drag to orbit · right-drag to pan · scroll to zoom</p>
+      <p className="camera-hint">Drag to explore · Scroll to zoom · Select a home</p>
       {selectedHouse && <div className="asset-inspector"><button onClick={() => setSelected(null)} aria-label="Close inspection">×</button><span>{selectedHouse.transformer} · phase {selectedHouse.phase}</span><strong>{selectedHouse.id}</strong><p>{selectedReading ? `${Math.abs(selectedReading.net_kwh).toFixed(2)} kWh ${selectedReading.state === 'export' ? 'exported' : 'drawn'}` : 'Waiting for reading'}</p><small>{selectedHouse.has_pv ? 'Rooftop PV' : 'No PV'} · {selectedHouse.has_battery ? `${Math.round((selectedReading?.soc_frac ?? 0) * 100)}% battery` : 'No battery'}</small></div>}
       <div className="control-bar"><button onClick={() => command('derate')} disabled={status === 'replay'}><Icon name="shield" /><span>Derate DT-3<small>{status === 'replay' ? 'Replay' : 'D'}</small></span></button><button onClick={() => command('cloud')} disabled={status === 'replay'}><Icon name="cloud" /><span>Send cloud bank<small>{status === 'replay' ? 'Replay' : 'C'}</small></span></button></div>
     </div>
-    <aside className="trace-panel"><div className="panel-heading"><span>Agent trace</span><strong>{block ? `Block ${block.block}` : 'Standby'}</strong></div><div className="trace-lines" ref={traceRef}>{events.length ? events.map((event, index) => <p key={`${event.block}-${event.kind}-${index}`}><span>{event.agent}</span>{event.text}</p>) : <p className="quiet-line">Waiting for the first agent event.</p>}</div></aside>
-    <div className="metric-strip"><Metric label="Block clock" value={block?.clock ?? '--:--'} note={block ? `Day ${block.day} / block ${block.block}` : 'Waiting'} clock /><Metric label="Clearing price" value={block?.clearing_price == null ? '—' : `₹${block.clearing_price.toFixed(2)}`} note="per kWh" /><Metric label="Worst loading" value={worst ? `${(worst[1].loading * 100).toFixed(0)}%` : '—'} note={worst?.[0] ?? 'No reading'} stress={Boolean(worst && worst[1].loading > 1)} /><Metric label="Local trades" value={String(block?.trades.length ?? 0)} note={hidden ? `12 shown · ${hidden} grouped` : 'All paths shown'} /><Metric label="Grid response" value={block ? title(block.status) : 'Waiting'} note={block?.status === 'reshaped' ? 'Constraint resolved' : block?.status === 'fallback' ? 'Safe curtailment' : 'Within limits'} state={block?.status} /></div>
+    <aside className="trace-panel"><div className="panel-heading"><h2>Agent activity</h2><span className="live-badge">{block ? `Block ${block.block}` : 'Standby'}</span></div><div className={`agent-status ${worst && worst[1].loading > 1 ? 'attention' : ''}`}><Icon name="shield" /><div><strong>{worst && worst[1].loading > 1 ? 'Sentinel is watching' : 'Your grid is in good hands'}</strong><small>{block?.status === 'reshaped' ? 'Power flow reshaped by agents' : block?.status === 'fallback' ? 'Safe curtailment applied' : 'Monitoring every local connection'}</small></div></div><div className="trace-lines" ref={traceRef}>{events.length ? events.map((event, index) => <p key={`${event.block}-${event.kind}-${index}`}><span><i />{title(event.agent)}<small>#{event.block}</small></span>{event.text}</p>) : <p className="quiet-line">Waiting for the first agent event.</p>}</div><div className="trace-footer"><span className="status-dot" />{block ? title(block.status) : 'Waiting'}<small>{hidden ? `12 paths · ${hidden} grouped` : `${block?.trades.length ?? 0} trade paths`}</small></div></aside>
+    <section className="transformer-panel"><div className="section-title"><h2>Transformer health</h2><span>Capacity utilization this block</span></div><div className="transformer-cards">{scene.transformers.map((transformer) => { const reading = block?.transformers[transformer.id]; return <div className={`transformer-card ${reading?.stressed ? 'stressed' : ''}`} key={transformer.id}><div className="transformer-card-top"><span className="transformer-icon"><Icon name="bolt" /></span><strong>{transformer.id}<small>{transformer.rating_kva} kVA capacity</small></strong><span className="health-pill">{reading ? reading.stressed ? 'Over limit' : 'Healthy' : 'Waiting'}</span></div><div className="transformer-reading"><strong>{reading ? Math.round(reading.loading * 100) : '—'}<small>%</small></strong><span>{reading ? `${reading.hotspot_c.toFixed(1)} °C` : '—'} hot-spot</span></div><div className="bar"><i style={{ width: `${Math.min(100, (reading?.loading ?? 0) * 100)}%` }} /></div></div> })}</div></section>
   </section>
 }
 
@@ -115,15 +136,15 @@ function Page({ number, titleText, subtitle, children }: { number: number; title
 }
 
 function Compare({ summary }: { summary: RunSummary }) {
-  const rows = [['Household bill', money(summary.householdBillBaseline), money(summary.householdBillUrjasetu), `−${money(summary.householdBillBaseline - summary.householdBillUrjasetu)}`], ['DISCOM revenue', money(summary.discomRevenueBaseline), money(summary.discomRevenueUrjasetu), `+${money(summary.discomRevenueUrjasetu)}`], ['Transformer life used', `${summary.transformerLifeBaseline.toFixed(3)}%`, `${summary.transformerLifeUrjasetu.toFixed(3)}%`, `−${Math.round((1 - summary.transformerLifeUrjasetu / summary.transformerLifeBaseline) * 100)}%`]]
-  return <Page number={2} titleText="Compare" subtitle="The same street, settled two ways."><div className="compare-table"><div className="compare-row compare-head"><span /><span>Net metering</span><span>UrjaSetu</span><span>Delta</span></div>{rows.map((row) => <div className="compare-row" key={row[0]}><strong>{row[0]}</strong><span>{row[1]}</span><span>{row[2]}</span><span className="favourable">{row[3]}</span></div>)}</div><p className="run-note">Thirty simulated days across {summary.houses} network nodes and {summary.transformers} distribution transformers.</p></Page>
+  const rows = [['Household bill', money(summary.householdBillBaseline), money(summary.householdBillUrjasetu), `−${money(summary.householdBillBaseline - summary.householdBillUrjasetu)}`], ['DISCOM revenue', money(summary.discomRevenueBaseline), money(summary.discomRevenueUrjasetu), `+${money(summary.discomRevenueUrjasetu - summary.discomRevenueBaseline)}`], ['Transformer life used', `${summary.transformerLifeBaseline.toFixed(3)}%`, `${summary.transformerLifeUrjasetu.toFixed(3)}%`, `−${Math.round((1 - summary.transformerLifeUrjasetu / summary.transformerLifeBaseline) * 100)}%`]]
+  return <Page number={2} titleText="Energy impact" subtitle="The same street, settled two ways."><div className="compare-table"><div className="compare-row compare-head"><span /><span>Net metering</span><span>UrjaSetu</span><span>Delta</span></div>{rows.map((row) => <div className="compare-row" key={row[0]}><strong>{row[0]}</strong><span>{row[1]}</span><span>{row[2]}</span><span className="favourable">{row[3]}</span></div>)}</div><p className="run-note">Thirty simulated days across {summary.houses} network nodes and {summary.transformers} distribution transformers.</p></Page>
 }
 
 function Theatre({ events, block }: { events: EventPayload[]; block: BlockPayload | null }) {
   const [step, setStep] = useState(0), [paused, setPaused] = useState(false)
   useEffect(() => { if (paused) return; const timer = window.setInterval(() => setStep((value) => (value + 1) % agents.length), 1600); return () => window.clearInterval(timer) }, [paused])
   useEffect(() => {
-    const onSpace = (event: KeyboardEvent) => { if (event.code === 'Space') { event.preventDefault(); setPaused((value) => !value) } }
+    const onSpace = (event: KeyboardEvent) => { if (event.code === 'Space' && !(event.target instanceof HTMLElement && event.target.closest('button, input, select, textarea'))) { event.preventDefault(); setPaused((value) => !value) } }
     window.addEventListener('keydown', onSpace); return () => window.removeEventListener('keydown', onSpace)
   }, [])
   const active = agents[step], message = [...events].reverse().find((event) => event.agent === active)?.text ?? `${title(active)} is ready for the next event.`
@@ -159,5 +180,5 @@ export default function App() {
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey)
   }, [command, replay, status])
   const content = [<CityScreen scene={scene} block={block} status={status} events={events} command={command} />, <Compare summary={summary} />, <Theatre events={events} block={block} />, <Ledger block={block} summary={summary} />, <Household scene={scene} block={block} />][screen]
-  return <Shell active={screen} onNavigate={setScreen} status={status}>{content}</Shell>
+  return <Shell active={screen} onNavigate={setScreen} status={status} replay={replay}>{content}</Shell>
 }

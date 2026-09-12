@@ -12,6 +12,8 @@ class Signal<T> {
 export class ReplayTransport implements Transport {
   protected index = 0
   protected timer: number | null = null
+  private eventTimers: number[] = []
+  private generation = 0
   protected readonly sceneSignal = new Signal<ScenePayload>()
   protected readonly blockSignal = new Signal<BlockPayload>()
   protected readonly eventSignal = new Signal<EventPayload>()
@@ -27,7 +29,9 @@ export class ReplayTransport implements Transport {
 
   start() {
     this.stop()
+    const generation = this.generation
     queueMicrotask(() => {
+      if (generation !== this.generation) return
       this.statusSignal.emit('replay')
       this.sceneSignal.emit(this.run.scene)
       this.emitCurrent()
@@ -39,8 +43,11 @@ export class ReplayTransport implements Transport {
   }
 
   stop() {
+    this.generation += 1
     if (this.timer !== null) window.clearInterval(this.timer)
     this.timer = null
+    this.eventTimers.forEach((timer) => window.clearTimeout(timer))
+    this.eventTimers = []
   }
 
   seek(block: number) {
@@ -51,15 +58,23 @@ export class ReplayTransport implements Transport {
   }
 
   protected emitCurrent() {
+    this.eventTimers.forEach((timer) => window.clearTimeout(timer))
+    this.eventTimers = []
     const block = this.run.blocks[this.index]
     this.blockSignal.emit(structuredClone(block))
     this.run.events.filter((event) => event.block === block.block).forEach((event, eventIndex) => {
-      window.setTimeout(() => this.eventSignal.emit({ ...event }), eventIndex * 80)
+      this.eventTimers.push(window.setTimeout(() => this.eventSignal.emit({ ...event }), eventIndex * 80))
     })
   }
 }
 
 export class DemoTransport extends ReplayTransport {
+  constructor(run: DemoRun) {
+    super(run, 3500)
+    // Open during solar generation so peer-to-peer flows are immediately visible.
+    this.index = Math.max(0, run.blocks.findIndex((block) => block.clock === '10:00'))
+  }
+
   override start() {
     super.start()
     queueMicrotask(() => this.statusSignal.emit('live'))

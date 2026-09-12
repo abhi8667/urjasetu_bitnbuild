@@ -21,20 +21,19 @@ export function project(gx: number, gy: number, gz = 0): ScreenPoint {
 export function layoutScene(scene: ScenePayload): LayoutResult {
   const houses: Record<string, GridPoint> = {}
   const transformers: Record<string, GridPoint> = {}
-  let cursor = 0
-
-  scene.transformers.forEach((transformer) => {
+  scene.transformers.forEach((transformer, clusterIndex) => {
     const cluster = scene.houses
       .filter((house) => house.transformer === transformer.id)
       .sort((a, b) => a.phase.localeCompare(b.phase) || a.id.localeCompare(b.id))
-    const rowLength = Math.ceil(cluster.length / 2)
-    transformers[transformer.id] = { gx: cursor + Math.floor(rowLength / 2), gy: -2, gz: 0 }
+    const originX = (clusterIndex % 2) * 12
+    const originY = Math.floor(clusterIndex / 2) * 9
+    const rowLength = Math.ceil(cluster.length / 3)
+    transformers[transformer.id] = { gx: originX + rowLength / 2, gy: originY - 1.8, gz: 0 }
     cluster.forEach((house, index) => {
-      const row = index % 2
-      const column = Math.floor(index / 2)
-      houses[house.id] = { gx: cursor + column, gy: row * 3, gz: 0 }
+      const row = Math.floor(index / rowLength)
+      const column = index % rowLength
+      houses[house.id] = { gx: originX + column * 1.4, gy: originY + row * 1.7, gz: 0 }
     })
-    cursor += rowLength + 2
   })
 
   return { houses, transformers }
