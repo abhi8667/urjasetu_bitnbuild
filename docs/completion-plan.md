@@ -65,7 +65,17 @@ For every block of a real run: `generation_kwh == consumption_kwh + net_battery_
 
 ---
 
-## Phase 4 — Decide on topology independence (#9), don't silently fail it
+## Phase 4 — Topology independence (#9) — CLOSED, waived by decision
+
+**Resolved:** option (c). The engine is count-agnostic (verified — any number of
+`rating_kva` entries runs identically), the dataset is fixed at four
+transformers, and fabricating a second topology to satisfy the check literally
+buys nothing. Recorded as DECISIONS.md D21. The engine ships at 9/10 integration
+checks with this one deliberately waived.
+
+<details><summary>Original plan, kept for context</summary>
+
+### (superseded) Decide on topology independence (#9), don't silently fail it
 
 **Why fourth:** this is the PRD requirement most in tension with the locked dataset. The dataset is fixed at 60 premises / 4 transformers — there is no `n_transformers=1` feed to run against without fabricating one.
 
@@ -79,6 +89,8 @@ For every block of a real run: `generation_kwh == consumption_kwh + net_battery_
 **Gate:** #9 either passes against a real (even if synthetic) 1/2/4-transformer feed, or `DECISIONS.md` states in one paragraph why it's out of scope for this dataset.
 
 **Effort:** (a) half a day; (b) 1–2 days; (c) 15 minutes plus the team conversation.
+
+</details>
 
 ---
 

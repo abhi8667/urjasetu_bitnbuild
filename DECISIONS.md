@@ -379,3 +379,38 @@ tick cache, so the run that follows is faster for having been validated.
 `runner.feed_validation`, so a run can show that its feed was verified rather
 than assumed. `validate_feed=False` exists for tests that deliberately drive a
 partial or stub feed, and is the only way to skip it.
+
+### D21 — Topology independence (§10.9) is deliberately scoped out, not overlooked
+
+PRD §10.9 asks for a full run at `n_transformers` set to 1, 2 and 4 without
+code changes. **We are not doing this, by decision, and the reason is the
+dataset rather than the engine.**
+
+What is actually true, and was verified rather than assumed:
+
+- **No module assumes a transformer count.** Every one iterates whatever the
+  registry provides. The only place `DT-1..DT-4` appears in `engine/` or
+  `grid/` is the default value of `config.rating_kva` — a config default, not
+  logic. A run with one, two or four entries in that dict completes
+  identically, with unlisted transformers falling back to their registry
+  ratings.
+- **The shipped dataset is fixed at four transformers and sixty premises.**
+  `data/` is locked (see the top of `data/README.md`). There is no
+  one-transformer feed to run against, and the transformer count comes from
+  the registry, not from configuration.
+
+Satisfying §10.9 literally would therefore mean fabricating a synthetic feed
+whose only purpose is to exercise a code path we can already show is
+count-agnostic, or building an adapter that repartitions sixty real premises
+onto fewer transformers and re-derives their losses, phases and ratings. Both
+add a second topology to maintain, and neither makes the demo better or the
+physics more honest.
+
+**So the engine ships at 9 of 10 integration checks, with this one waived.**
+That is a scoping decision, recorded here so it is answerable rather than
+discovered. The honest sentence, if asked: *the engine is topology-independent
+— nothing in it assumes four transformers — but the dataset we validate against
+has four, so that is the topology we claim.*
+
+If a second topology ever becomes genuinely useful, D21 is the entry to revisit,
+and the work is a `MeterFeed` implementation, not a change to any agent.
