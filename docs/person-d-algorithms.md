@@ -190,7 +190,7 @@ Add variables `b_h ≥ 0` for each house with a battery — kWh absorbed this bl
 ```
 objective: maximise  sum(c_t * qty_t * price_t) - sum(b_h * storage_fee)
 new constraints:
-    b_h <= house.battery_max_kw * 0.25          # power limit over 15 min
+    b_h <= house.battery_max_kw * config.block_hours   # power limit over one block
     b_h <= house.battery_kwh - soc_h            # capacity headroom
 ```
 

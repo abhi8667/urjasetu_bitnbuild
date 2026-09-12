@@ -28,7 +28,7 @@ Any engine module. You consume the transport interface and nothing else. If you 
 
 Sit with B for 30 minutes. Freeze three payload shapes exactly as in UI PRD §4.3: `scene`, `block`, `event`.
 
-Then write `fixtures/day-one.json` together — one simulated day, 96 blocks, hand-made or scripted. Include, deliberately:
+Then write `fixtures/day-one.json` together — one simulated day, 24 blocks (the dataset is hourly), hand-made or scripted. Include, deliberately:
 
 - a normal block with 8 trades
 - a block with 30 trades, to prove the 12-arc cap
@@ -46,7 +46,7 @@ You now have twenty hours of unblocked work. **Do not wait for a running engine 
 | Order | Work | Target hour | Gate |
 |---|---|---|---|
 | 1 | Shell, tokens, keyboard routing | 4 | Keys 1–5 switch five placeholder screens |
-| 2 | Projection and layout | 8 | 50 houses, 3 transformers, correct draw order |
+| 2 | Projection and layout | 8 | 64 nodes, 4 transformers, correct draw order |
 | 3 | Block subscription, colour encoding | 12 | Scene recolours across 96 fixture blocks |
 | 4 | Trace panel, metric strip, status badge | 16 | City screen complete except motion |
 | 5 | Wire pulses, trade arcs, 12-cap | 20 | 60fps across a full fixture day |
@@ -65,7 +65,7 @@ You now have twenty hours of unblocked work. **Do not wait for a running engine 
 ### 5.1 Projection — hour 8
 
 ```js
-const S = 34;                         // tile px, tuned for 50 houses at 1920
+const S = 30;                         // tile px, tuned for 64 nodes at 1920
 const COS30 = Math.cos(Math.PI / 6);
 
 function project(gx, gy, gz = 0) {
@@ -109,7 +109,7 @@ Quadratic Bézier, seller roof to buyer roof, control point lifted `0.3 × dista
 
 **Cap at 12 arcs, the largest by kWh.** Stagger by 40ms descending. Remaining trades become a count in the strip.
 
-This is a hard limit. At 50 houses you will have 20–30 trades a block and drawing them all is unreadable. Someone will ask you to raise it once it works; do not.
+This is a hard limit. At 60 premises you will have 15–25 trades a block and drawing them all is unreadable. Someone will ask you to raise it once it works; do not.
 
 **Performance:** CSS transforms only. One `requestAnimationFrame` loop for the whole scene, not one per element. Budget: full block render under 16ms.
 
@@ -141,8 +141,8 @@ Both satisfy one interface. **No screen contains an adapter-specific branch.**
 |---|---|---|
 | 0–2 | Handshake with B, fixture file | Six fixture cases written |
 | 2–4 | Shell, tokens, routing | Keys 1–5 work |
-| 4–8 | Projection, layout, static city | 50 houses render correctly |
-| 8–12 | Block subscription, colours | Recolours across 96 blocks |
+| 4–8 | Projection, layout, static city | 64 nodes render correctly |
+| 8–12 | Block subscription, colours | Recolours across 24 blocks |
 | 12–16 | Trace, strip, badge | City screen complete, still |
 | 16–20 | Wire pulses, arcs, cap | 60fps for a full day |
 | 20–24 | Reshape choreography | Sequence fires correctly |
@@ -205,6 +205,6 @@ You draft it at hour 24, everyone edits. Roughly three and a half minutes:
 - Anything visible on screen
 - "Is this live or a video?" — press `d` and let the reshape answer
 - What the colours mean
-- Why 50 houses and 3 transformers
+- Why 60 premises and 4 transformers
 
 You are also the person most likely to be asked to run it again. Make sure a fresh run takes under thirty seconds to start.
