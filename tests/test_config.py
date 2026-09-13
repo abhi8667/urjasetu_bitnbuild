@@ -99,9 +99,9 @@ def test_cf1_holds_with_neither_pydantic_nor_yaml():
     script = (
         "import sys\n"
         "class Block:\n"
-        "    def find_module(self, n, p=None):\n"
-        "        return self if n.split('.')[0] in ('pydantic','yaml') else None\n"
-        "    def load_module(self, n): raise ImportError(n)\n"
+        "    def find_spec(self, n, path=None, target=None):\n"
+        "        if n.split('.')[0] in ('pydantic','yaml'): raise ImportError(n)\n"
+        "        return None\n"
         "sys.meta_path.insert(0, Block())\n"
         f"sys.path.insert(0, {str(REPO)!r})\n"
         "from engine.config import load_config, PYDANTIC_AVAILABLE, YAML_AVAILABLE\n"

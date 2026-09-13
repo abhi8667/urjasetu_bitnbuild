@@ -35,4 +35,6 @@ services:
       - key: URJASETU_LLM_ENABLED
         value: "true"
       - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
+        value: qwen/qwen3.8-27b
+      - key: GROQ_FALLBACK_MODEL
+        value: openai/gpt-oss-120b

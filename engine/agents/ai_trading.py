@@ -78,7 +78,7 @@ class AITradingStrategyAgent:
             "with numeric keys discount and margin. Keep trades attractive to "
             "households while reducing demand when transformer risk is high."
         )
-        body = json.dumps({
+        payload = {
             "model": model,
             "messages": [
                 {"role": "system", "content": system},
@@ -87,7 +87,17 @@ class AITradingStrategyAgent:
             "response_format": {"type": "json_object"},
             "temperature": 0.1,
             "max_tokens": 180,
-        }).encode("utf-8")
+        }
+        if model.startswith("openai/gpt-oss-"):
+            # Reasoning uses the completion budget too; 180 tokens can leave
+            # no room for the final JSON strategy.
+            payload.pop("max_tokens")
+            payload.update(max_completion_tokens=2048, reasoning_effort="low")
+        elif model == "qwen/qwen3.8-27b":
+            # These short strategy decisions do not need a thinking trace.
+            payload.pop("max_tokens")
+            payload.update(max_completion_tokens=400, reasoning_effort="none")
+        body = json.dumps(payload).encode("utf-8")
         base_url = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
         chat_url = f"{base_url}/chat/completions"
         request = urllib.request.Request(

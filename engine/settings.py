@@ -56,8 +56,8 @@ def _int(name: str, default: int) -> int:
 # ------------------------------------------------------------------ LLM
 
 GROQ_API_KEY = _str("GROQ_API_KEY")
-GROQ_MODEL = _str("GROQ_MODEL", "llama-3.3-70b-versatile")
-GROQ_FALLBACK_MODEL = _str("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL = _str("GROQ_MODEL", "qwen/qwen3.8-27b")
+GROQ_FALLBACK_MODEL = _str("GROQ_FALLBACK_MODEL", "openai/gpt-oss-120b")
 GROQ_BASE_URL = _str("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 GROQ_TIMEOUT_SECONDS = _float("GROQ_TIMEOUT_SECONDS", 6.0)
 
