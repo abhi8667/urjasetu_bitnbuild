@@ -232,7 +232,7 @@ function CityApp() {
   }, [events])
 
   // Camera traversal state
-  const [cameraMode, setCameraMode] = useState<CameraMode>('orbit')
+  const [cameraMode, setCameraMode] = useState<CameraMode>('perspective')
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
 
   // Floating Window toggles (Matches Image 1 buttons & Image 2 multi-windows)
@@ -766,10 +766,12 @@ function CityApp() {
           <button
             className={`cam-view-btn ${cameraMode === 'orbit' ? 'cam-active' : ''}`}
             onClick={() => setCameraMode('orbit')}
+            title="Orbit mode: continuous 360° rotation around grid (Press 1)"
           >
-            <svg className="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-              <circle cx="12" cy="12" r="3" />
+            <svg className="cam-icon cam-icon-orbit" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3" fill="currentColor" fillOpacity="0.4" />
+              <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-25 12 12)" />
+              <circle cx="19" cy="9" r="1.5" fill="currentColor" />
             </svg>
             <span>Orbit</span>
           </button>
@@ -777,6 +779,7 @@ function CityApp() {
           <button
             className={`cam-view-btn ${cameraMode === 'top-down' ? 'cam-active' : ''}`}
             onClick={() => setCameraMode('top-down')}
+            title="Top-Down view: 2D overhead map (Press 2)"
           >
             <svg className="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="7 10 12 15 17 10" />
@@ -789,6 +792,7 @@ function CityApp() {
           <button
             className={`cam-view-btn ${cameraMode === 'perspective' ? 'cam-active' : ''}`}
             onClick={() => setCameraMode('perspective')}
+            title="Perspective view: isometric 3D angle (Press 3)"
           >
             <svg className="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="9" />
@@ -802,7 +806,11 @@ function CityApp() {
         </div>
 
         <div className="camera-help-text">
-          Use mouse to look around <span className="help-sep">|</span> Scroll to zoom <span className="help-sep">|</span> Right-drag to pan
+          {cameraMode === 'orbit' ? (
+            <span>Orbiting grid (360°) <span className="help-sep">|</span> Drag to tilt <span className="help-sep">|</span> Scroll to zoom</span>
+          ) : (
+            <span>Use mouse to look around <span className="help-sep">|</span> Scroll to zoom <span className="help-sep">|</span> Right-drag to pan</span>
+          )}
         </div>
       </nav>
 

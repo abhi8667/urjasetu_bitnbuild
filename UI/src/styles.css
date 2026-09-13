@@ -551,6 +551,16 @@ button {
   height: 15px;
 }
 
+@keyframes cam-orbit-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.cam-view-btn.cam-active .cam-icon-orbit {
+  animation: cam-orbit-spin 4.5s linear infinite;
+  transform-origin: center;
+}
+
 .camera-help-text {
   font-size: 10.5px;
   color: var(--text-muted);

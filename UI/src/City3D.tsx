@@ -802,6 +802,7 @@ function CameraRig({ mode, selectedFocus, extent }: {
     controls.maxPolarAngle = Math.PI / 2
     controls.enableRotate = mode !== 'top-down'
     controls.enableDamping = false
+    controls.autoRotate = false
     if (!initialized.current) {
       camera.position.copy(position)
       controls.target.copy(target)
@@ -816,21 +817,30 @@ function CameraRig({ mode, selectedFocus, extent }: {
 
   useFrame((_, delta) => {
     const travel = transition.current, controls = controlsRef.current
-    if (!travel || !controls) return
-    travel.elapsed += delta
-    const t = Math.min(1, travel.elapsed / 1.2)
-    const eased = t * t * (3 - 2 * t)
-    camera.position.lerpVectors(travel.from, travel.to, eased)
-    controls.target.lerpVectors(travel.fromTarget, travel.toTarget, eased)
-    controls.update()
-    if (t === 1) {
-      transition.current = null
-      controls.enableDamping = true
+    if (!controls) return
+    if (travel) {
+      controls.autoRotate = false
+      travel.elapsed += delta
+      const t = Math.min(1, travel.elapsed / 1.2)
+      const eased = t * t * (3 - 2 * t)
+      camera.position.lerpVectors(travel.from, travel.to, eased)
+      controls.target.lerpVectors(travel.fromTarget, travel.toTarget, eased)
+      controls.update()
+      if (t >= 1) {
+        transition.current = null
+        controls.enableDamping = true
+        controls.autoRotate = mode === 'orbit'
+      }
+    } else {
+      if (controls.autoRotate !== (mode === 'orbit')) {
+        controls.autoRotate = mode === 'orbit'
+      }
     }
   })
 
   return <OrbitControls ref={controlsRef} makeDefault enableDamping dampingFactor={.06}
     minDistance={6} maxDistance={Math.max(85, extent * 2.6, fit * 1.5)} enablePan
+    autoRotate={mode === 'orbit'} autoRotateSpeed={1.0}
     onStart={() => { transition.current = null; if (controlsRef.current) controlsRef.current.enableDamping = true }} />
 }
 
@@ -1148,7 +1158,7 @@ function CityScene({
 }
 
 export function City3D(props: CityProps) {
-  const [internalCameraMode, setInternalCameraMode] = useState<CameraMode>('orbit')
+  const [internalCameraMode, setInternalCameraMode] = useState<CameraMode>('perspective')
   const cameraMode = props.cameraMode ?? internalCameraMode
 
   return (
