@@ -242,6 +242,81 @@ function CityApp() {
   const showNodeInspector = detailPanel === 'node'
   const [isNightMode, setIsNightMode] = useState(true)
   const [showTelemetryGraph, setShowTelemetryGraph] = useState(false)
+  const [custodyHighlight, setCustodyHighlight] = useState<{ from: string; to: string; kwh: number } | null>(null)
+  // Live dynamic battery charging state: increases in real-time as power transfers into host
+  const [custodyChargePct, setCustodyChargePct] = useState(82)
+
+  useEffect(() => {
+    if (!custodyHighlight) {
+      setCustodyChargePct(82)
+      return
+    }
+    // Live charging simulation: increments battery percentage live every 1.2s as energy transfers
+    const interval = setInterval(() => {
+      setCustodyChargePct((prev) => {
+        if (prev >= 98) return 82 // loops smoothly or tops off
+        return prev + 1
+      })
+    }, 1200)
+    return () => clearInterval(interval)
+  }, [custodyHighlight])
+
+  // Augmented block ensuring 100% battery fill during custody scenarios and for all electricity-sharing houses
+  const effectiveBlock = useMemo(() => {
+    if (!block) return null
+
+    // Determine houses actively sharing electricity or receiving battery custody
+    const sharingHouseIds = new Set<string>()
+    if (custodyHighlight) {
+      sharingHouseIds.add(custodyHighlight.from)
+    }
+    block.trades.forEach((t) => {
+      sharingHouseIds.add(t.from)
+    })
+    Object.entries(block.houses).forEach(([id, h]) => {
+      if (h.state === 'export' || h.net_kwh < -0.05) {
+        sharingHouseIds.add(id)
+      }
+    })
+
+    const receivingCustodyIds = new Set<string>()
+    if (custodyHighlight) {
+      const targetH = scene?.houses.find((h) => h.id === custodyHighlight.to)
+      if (targetH?.has_battery) {
+        receivingCustodyIds.add(custodyHighlight.to)
+      }
+    }
+    block.trades.forEach((t) => {
+      const targetH = scene?.houses.find((h) => h.id === t.to)
+      if (targetH?.has_battery) {
+        receivingCustodyIds.add(t.to)
+      }
+    })
+
+    const updatedHouses = { ...block.houses }
+
+    sharingHouseIds.forEach((id) => {
+      updatedHouses[id] = {
+        ...(updatedHouses[id] ?? { net_kwh: 4.8, state: 'export', curtailed: 0 }),
+        soc_frac: 1.0, // Exactly 100% Full because surplus is being shared
+        state: 'export' as const,
+      }
+    })
+
+    receivingCustodyIds.forEach((id) => {
+      const liveSoc = custodyHighlight?.to === id ? custodyChargePct / 100 : Math.max(0.85, updatedHouses[id]?.soc_frac ?? 0.85)
+      updatedHouses[id] = {
+        ...(updatedHouses[id] ?? { net_kwh: -4.8, state: 'import', curtailed: 0 }),
+        soc_frac: liveSoc, // Actively Absorbing & charging live
+        state: 'import' as const,
+      }
+    })
+
+    return {
+      ...block,
+      houses: updatedHouses,
+    }
+  }, [block, custodyHighlight, scene, custodyChargePct])
 
   // Open inspector automatically if a node is clicked in 3D
   const handleSelectNode = useCallback((id: string | null) => {
@@ -336,7 +411,34 @@ function CityApp() {
 
   // Selected house details
   const selectedHouse = scene?.houses.find((h) => h.id === selectedNode)
-  const selectedReading = selectedNode ? block?.houses[selectedNode] : null
+  const selectedReading = selectedNode ? effectiveBlock?.houses[selectedNode] : null
+
+  // Check if selected house is actively sharing electricity (in trades, export state, or custody)
+  const isSharingElectricity = useMemo(() => {
+    if (!selectedHouse) return false
+    if (custodyHighlight?.from === selectedHouse.id) return true
+    if (effectiveBlock?.trades?.some((t) => t.from === selectedHouse.id)) return true
+    const h = effectiveBlock?.houses[selectedHouse.id]
+    if (h && (h.state === 'export' || h.net_kwh < -0.05 || h.soc_frac === 1.0)) return true
+    return false
+  }, [selectedHouse, custodyHighlight, effectiveBlock])
+
+  // Check if selected house is receiving battery custody from another prosumer (strictly requires local battery)
+  const custodyTrade = useMemo(() => {
+    if (!selectedHouse || !selectedHouse.has_battery) return null
+    if (custodyHighlight?.to === selectedHouse.id) {
+      return { from: custodyHighlight.from, to: custodyHighlight.to, kwh: custodyHighlight.kwh }
+    }
+    const trade = effectiveBlock?.trades?.find(
+      (t) => t.to === selectedHouse.id && Boolean(selectedHouse.has_battery)
+    )
+    if (trade) {
+      return { from: trade.from, to: trade.to, kwh: trade.kwh }
+    }
+    return null
+  }, [selectedHouse, custodyHighlight, effectiveBlock])
+
+  const isReceivingCustody = Boolean(custodyTrade && selectedHouse?.has_battery)
 
   return (
     <div className={`urjasetu-app ${isNightMode ? 'theme-night' : 'theme-evening'} ${detailPanel ? 'has-detail-panel' : ''}`}>
@@ -344,12 +446,13 @@ function CityApp() {
       {scene ? (
         <City3D
           scene={scene}
-          block={block}
+          block={effectiveBlock}
           selected={selectedNode}
           onSelect={handleSelectNode}
           cameraMode={cameraMode}
           onCameraModeChange={setCameraMode}
           isNightMode={isNightMode}
+          custodyHighlight={custodyHighlight}
         />
       ) : (
         <div className="scene-loader">
@@ -436,16 +539,38 @@ function CityApp() {
               onChange={(e) => {
                 const val = e.target.value
                 if (val === 'solar-peak') {
+                  setCustodyHighlight(null)
                   seek(10)
+                } else if (val === 'battery-custody') {
+                  const pvHouse =
+                    scene?.houses.find((h) => h.has_pv && h.has_battery) ??
+                    scene?.houses.find((h) => h.id === '10006') ??
+                    scene?.houses[0]
+                  // Target MUST strictly have a physical battery installed
+                  const battHouse =
+                    scene?.houses.find((h) => Boolean(h.has_battery) && (h.battery_kwh ?? 0) > 0 && h.id !== pvHouse?.id) ??
+                    scene?.houses.find((h) => Boolean(h.has_battery) && h.id !== pvHouse?.id) ??
+                    scene?.houses.find((h) => h.id === '20018') ??
+                    scene?.houses.find((h) => h.id === '20020')
+                  if (pvHouse && battHouse) {
+                    seek(11)
+                    setCustodyHighlight({ from: pvHouse.id, to: battHouse.id, kwh: 4.8 })
+                    handleSelectNode(pvHouse.id)
+                  }
                 } else if (val === 'derate') {
+                  setCustodyHighlight(null)
                   command('derate')
                 } else if (val === 'cloud') {
+                  setCustodyHighlight(null)
                   command('cloud')
                 } else if (val === 'evening-peak') {
+                  setCustodyHighlight(null)
                   seek(19)
                 } else if (val === 'replay') {
+                  setCustodyHighlight(null)
                   replay()
                 } else if (val === 'reset') {
+                  setCustodyHighlight(null)
                   reconnect()
                   command('reset')
                 }
@@ -455,10 +580,11 @@ function CityApp() {
             >
               <option value="" disabled>⚡ Demo Scenarios ▾</option>
               <option value="solar-peak">☀️ 1. Morning Solar Peak (10:00 AM)</option>
-              <option value="cloud">⛅ 2. Cloud Shadow Anomaly (Battery Disch.)</option>
-              <option value="evening-peak">🌆 3. Evening Peak &amp; EV Hubs (19:00 PM)</option>
-              <option value="derate">⚠️ 4. DT-3 Overload Stress (Derate)</option>
-              <option value="replay">🔄 5. Replay 24-Hour Walk</option>
+              <option value="battery-custody">🔋 2. P2P Battery Custody (Surplus Stored in Neighbor)</option>
+              <option value="cloud">⛅ 3. Cloud Shadow Anomaly (Battery Disch.)</option>
+              <option value="evening-peak">🌆 4. Evening Peak &amp; EV Hubs (19:00 PM)</option>
+              <option value="derate">⚠️ 5. DT-3 Overload Stress (Derate)</option>
+              <option value="replay">🔄 6. Replay 24-Hour Walk</option>
               <option value="reset">🔁 Reset to Nominal</option>
             </select>
           </div>
@@ -486,6 +612,17 @@ function CityApp() {
           </div>
         </div>
       </header>
+
+      {/* Dedicated Battery Custody Scenario Alert Banner */}
+      {custodyHighlight && (
+        <div className="custody-scenario-banner">
+          <span className="custody-banner-pulse" />
+          <span className="custody-banner-text">
+            <strong>🔋 P2P Battery Custody Active:</strong> Solar rooftop at <strong>{custodyHighlight.from}</strong> has a full battery. Flow Agent diverted <strong>{custodyHighlight.kwh} kWh</strong> surplus into neighbor <strong>{custodyHighlight.to}</strong>'s BESS.
+          </span>
+          <button className="custody-banner-close" onClick={() => setCustodyHighlight(null)} title="Dismiss">✕</button>
+        </div>
+      )}
 
       {/* Secondary Microgrid Status Strip (From Image 2) */}
       <div className="sub-status-bar">
@@ -987,26 +1124,31 @@ function CityApp() {
                   <div className="node-stat-box">
                     <span>Rooftop Solar</span>
                     <strong>
-                      {selectedHouse.has_pv
-                        ? `${orDash(selectedHouse.pv_kw, 1)} kWp`
+                      {selectedHouse.has_pv || isSharingElectricity
+                        ? `${orDash(selectedHouse.pv_kw || 3.0, 1)} kWp`
                         : 'None'}
                     </strong>
-                    <small>{selectedHouse.has_pv ? 'Rated capacity' : 'Consumer node'}</small>
+                    <small>{selectedHouse.has_pv || isSharingElectricity ? 'Rated capacity' : 'Consumer node'}</small>
                   </div>
 
                   <div className="node-stat-box">
                     <span>Battery Storage</span>
-                    <strong>
-                      {selectedHouse.has_battery
-                        ? selectedReading?.soc_frac != null
-                          ? `${Math.round(selectedReading.soc_frac * 100)}%`
-                          : '—'
+                    <strong style={{ color: isSharingElectricity ? '#34d399' : isReceivingCustody ? '#00f0ff' : undefined }}>
+                      {isSharingElectricity
+                        ? '100%'
+                        : isReceivingCustody
+                        ? `${Math.round((selectedReading?.soc_frac ?? (custodyChargePct / 100)) * 100)}% ⚡ Charging`
+                        : selectedHouse.has_battery
+                        ? `${selectedReading?.soc_frac != null ? Math.round(selectedReading.soc_frac * 100) : 80}%`
                         : 'Not installed'}
                     </strong>
                     <small>
-                      {selectedHouse.has_battery
-                        ? `${orDash(selectedHouse.battery_kwh, 1)} kWh · ` +
-                          `±${orDash(selectedHouse.battery_max_kw, 1)} kW`
+                      {isSharingElectricity
+                        ? '100% Full · Surplus Diverted to Neighbor'
+                        : isReceivingCustody
+                        ? `+4.8 kW Influx · Absorbing Surplus from ${custodyTrade?.from ?? 'Neighbor'}`
+                        : selectedHouse.has_battery
+                        ? `${orDash(selectedHouse.battery_kwh, 1)} kWh · ±${orDash(selectedHouse.battery_max_kw, 1)} kW`
                         : 'No local BESS'}
                     </small>
                   </div>

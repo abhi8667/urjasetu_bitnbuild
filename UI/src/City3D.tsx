@@ -30,6 +30,7 @@ type CityProps = {
   cameraMode?: CameraMode
   onCameraModeChange?: (mode: CameraMode) => void
   isNightMode?: boolean
+  custodyHighlight?: { from: string; to: string; kwh: number } | null
 }
 
 type Part = { position: Point; scale: Point; rotation?: Point; house?: string }
@@ -619,17 +620,19 @@ function CentralTransformer({
   )
 }
 
-// Glowing Golden Energy Transfer Arc
+// Glowing Energy Transfer Arc (Gold for P2P Consumer, Emerald for Battery Custody)
 function GlowingEnergyArc({
   source,
   target,
   trade,
   index,
+  isBatteryCustody = false,
 }: {
   source: Point
   target: Point
   trade: TradePayload
   index: number
+  isBatteryCustody?: boolean
 }) {
   const pulseRef = useRef<THREE.Mesh>(null)
 
@@ -649,7 +652,8 @@ function GlowingEnergyArc({
     }
   })
 
-  const arcColor = trade.curtailed ? '#ef4444' : '#ffb703'
+  // Vibrant Emerald (#10b981) for Battery Custody, Red for Curtailed, Gold (#ffb703) for P2P
+  const arcColor = trade.curtailed ? '#ef4444' : isBatteryCustody ? '#10b981' : '#ffb703'
 
   return (
     <group>
@@ -658,13 +662,13 @@ function GlowingEnergyArc({
         end={curve.v2}
         mid={curve.v1}
         color={arcColor}
-        lineWidth={2.5}
+        lineWidth={isBatteryCustody ? 3.4 : 2.5}
         transparent
-        opacity={0.88}
+        opacity={isBatteryCustody ? 0.95 : 0.88}
       />
       <mesh ref={pulseRef}>
-        <sphereGeometry args={[0.16, 12, 12]} />
-        <meshBasicMaterial color="#ffffff" />
+        <sphereGeometry args={[isBatteryCustody ? 0.22 : 0.16, 12, 12]} />
+        <meshBasicMaterial color={isBatteryCustody ? '#34d399' : '#ffffff'} />
       </mesh>
     </group>
   )
@@ -837,14 +841,28 @@ function CityScene({
   selected,
   onSelect,
   cameraMode,
+  custodyHighlight,
 }: CityProps & { cameraMode: CameraMode }) {
   const layout = useMemo(() => cityLayout(scene), [scene])
   const batches = useMemo(() => buildDetailedArchitecture(scene, layout), [scene, layout])
   const selectedPoint = selected ? layout.houses[selected] : null
 
   const activeTrades = useMemo(() => {
-    return (block?.trades ?? []).slice(0, 16)
-  }, [block])
+    const list = [...(block?.trades ?? []).slice(0, 16)]
+    if (custodyHighlight) {
+      const exists = list.some((t) => t.from === custodyHighlight.from && t.to === custodyHighlight.to)
+      if (!exists) {
+        list.unshift({
+          from: custodyHighlight.from,
+          to: custodyHighlight.to,
+          kwh: custodyHighlight.kwh,
+          price: 4.25,
+          curtailed: 0,
+        })
+      }
+    }
+    return list
+  }, [block, custodyHighlight])
 
   const gridConnections = useMemo<PowerConnection[]>(() => {
     return scene.transformers.map((transformer, index) => {
@@ -1035,14 +1053,15 @@ function CityScene({
         </group>
       )}
 
-      {/* Golden Glowing Energy Arcs */}
+      {/* Glowing Energy Transfer Arcs (Gold for Consumer, Neon Emerald for Battery Custody) */}
       {activeTrades.map((trade, index) => {
         const fromPos = layout.houses[trade.from]
         const toPos = layout.houses[trade.to]
         if (!fromPos || !toPos) return null
 
-        const sourceHouse = scene.houses.find((h) => h.id === trade.from)!
-        const targetHouse = scene.houses.find((h) => h.id === trade.to)!
+        const sourceHouse = scene.houses.find((h) => h.id === trade.from)
+        const targetHouse = scene.houses.find((h) => h.id === trade.to)
+        if (!sourceHouse || !targetHouse) return null
 
         const sourceCoord: Point = [
           fromPos[0],
@@ -1055,14 +1074,73 @@ function CityScene({
           toPos[2],
         ]
 
+        // Battery Custody requires destination house to strictly have a physical battery installed
+        const isBatteryCustody =
+          Boolean(targetHouse.has_battery && (targetHouse.battery_kwh == null || targetHouse.battery_kwh > 0)) &&
+          Boolean(
+            (custodyHighlight && custodyHighlight.from === trade.from && custodyHighlight.to === trade.to) ||
+            targetHouse.has_battery
+          )
+
         return (
-          <GlowingEnergyArc
-            key={`${trade.from}-${trade.to}-${index}`}
-            source={sourceCoord}
-            target={targetCoord}
-            trade={trade}
-            index={index}
-          />
+          <group key={`${trade.from}-${trade.to}-${index}`}>
+            <GlowingEnergyArc
+              source={sourceCoord}
+              target={targetCoord}
+              trade={trade}
+              index={index}
+              isBatteryCustody={isBatteryCustody}
+            />
+
+            {/* 3D Floating Popup Badge when energy is stored in neighbor's battery */}
+            {isBatteryCustody && targetHouse.has_battery && (
+              <>
+                <Html
+                  position={[sourceCoord[0], sourceCoord[1] + 2.2, sourceCoord[2]]}
+                  center
+                  zIndexRange={[100, 0]}
+                >
+                  <div
+                    className="battery-custody-popup"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onSelect(sourceHouse.id)
+                    }}
+                    style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+                    title={`Click to inspect ${sourceHouse.id} (100% Full · Diverting)`}
+                  >
+                    <span className="popup-icon">🔋</span>
+                    <div className="popup-body">
+                      <div className="popup-title">Battery Full · Diverting</div>
+                      <div className="popup-sub">Storing in {targetHouse.id} ({trade.kwh.toFixed(1)} kWh)</div>
+                    </div>
+                  </div>
+                </Html>
+
+                <Html
+                  position={[targetCoord[0], targetCoord[1] + 2.2, targetCoord[2]]}
+                  center
+                  zIndexRange={[100, 0]}
+                >
+                  <div
+                    className="battery-custody-popup receiving"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onSelect(targetHouse.id)
+                    }}
+                    style={{ cursor: 'pointer', pointerEvents: 'auto' }}
+                    title={`Click to inspect BESS host ${targetHouse.id}`}
+                  >
+                    <span className="popup-icon">⚡</span>
+                    <div className="popup-body">
+                      <div className="popup-title">BESS Custody Host · {Math.round((block?.houses[targetHouse.id]?.soc_frac ?? 0.85) * 100)}% ⚡ Charging</div>
+                      <div className="popup-sub">Absorbing from {sourceHouse.id} (+{trade.kwh.toFixed(1)} kW · {targetHouse.battery_kwh || 10} kWh BESS)</div>
+                    </div>
+                  </div>
+                </Html>
+              </>
+            )}
+          </group>
         )
       })}
     </>
