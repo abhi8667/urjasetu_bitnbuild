@@ -162,7 +162,7 @@ When solar prosumer **`10006`** reaches 100% battery capacity, the autonomous Fl
 ### 2. Real-Time Grid Telemetry & Load Dynamics
 Interactive telemetry panel tracking transformer loading curves for DT-1 through DT-4 against the 100% critical limit line, combined with real-time market clearing price discovery and EV spike metrics.
 <p align="center">
-  <img src="img/telemetry-graph.png" alt="Real-Time Grid Telemetry & Load Dynamics" width="95%" style="border-radius: 8px;" />
+  <img src="img/telementary-graph-1.png" alt="Real-Time Grid Telemetry & Load Dynamics" width="95%" style="border-radius: 8px;" />
 </p>
 
 ---
