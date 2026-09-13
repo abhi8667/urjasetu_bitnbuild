@@ -111,6 +111,7 @@ def build_simulation(config: Config | None = None, days: int | None = None,
     if config is None:
         config = replace(load_config(), llm_enabled=settings.LLM_ENABLED,
                          groq_primary_model=settings.GROQ_MODEL,
+                         groq_fallback_model=settings.GROQ_FALLBACK_MODEL,
                          groq_timeout_seconds=settings.GROQ_TIMEOUT_SECONDS)
     if derate is not None and derate != config.derate_factor:
         config = replace(config, derate_factor=derate)

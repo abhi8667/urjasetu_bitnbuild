@@ -86,8 +86,8 @@ def test_groq_primary_and_fallback_models():
     old = StrategyParams()
     risk = [GridRiskPrediction("DT-1", 0, 3, 0.9, 1.1, True)]
     new = agent.decide({"ambient_c": 31}, [4.2, 4.5], risk, old)
-    check("Groq falls back from Qwen 3.8 to Qwen 3.6", calls == [
-        "qwen/qwen3.8-27b", "qwen/qwen3.6-27b"], str(calls))
+    check("Groq falls back from primary to fallback", calls == [
+        config.groq_primary_model, config.groq_fallback_model], str(calls))
     check("fallback response changes only safe strategy fields",
           new.discount == 0.79 and new.margin == 0.12 and
           new.battery_reserve_frac == old.battery_reserve_frac and

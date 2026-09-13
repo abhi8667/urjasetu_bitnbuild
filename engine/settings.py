@@ -57,6 +57,7 @@ def _int(name: str, default: int) -> int:
 
 GROQ_API_KEY = _str("GROQ_API_KEY")
 GROQ_MODEL = _str("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_FALLBACK_MODEL = _str("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")
 GROQ_BASE_URL = _str("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 GROQ_TIMEOUT_SECONDS = _float("GROQ_TIMEOUT_SECONDS", 6.0)
 
@@ -72,11 +73,14 @@ def llm_status() -> dict:
     say "deterministic defaults" rather than leaving it ambiguous."""
     if LLM_ENABLED:
         return {"enabled": True, "provider": "groq", "model": GROQ_MODEL,
+                "fallback_model": GROQ_FALLBACK_MODEL,
                 "reason": "configured"}
     if not _bool("URJASETU_LLM_ENABLED", False):
         return {"enabled": False, "provider": "groq", "model": GROQ_MODEL,
+                "fallback_model": GROQ_FALLBACK_MODEL,
                 "reason": "URJASETU_LLM_ENABLED is not true"}
     return {"enabled": False, "provider": "groq", "model": GROQ_MODEL,
+            "fallback_model": GROQ_FALLBACK_MODEL,
             "reason": "GROQ_API_KEY is empty"}
 
 

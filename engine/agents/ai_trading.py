@@ -52,9 +52,20 @@ class AITradingStrategyAgent:
                 self.last_model = model
                 self.last_error = None
                 return strategy
+            except urllib.error.HTTPError as exc:
+                detail = f"HTTP {exc.code}"
+                try:
+                    raw_body = exc.read().decode("utf-8")
+                    err_json = json.loads(raw_body)
+                    msg = err_json.get("error", {}).get("message")
+                    if msg:
+                        detail += f": {msg}"
+                except Exception:
+                    pass
+                self.last_error = f"HTTPError ({detail})"
             except Exception as exc:
                 # Provider error bodies can contain sensitive request details.
-                self.last_error = f"{type(exc).__name__}" + (f" (HTTP {exc.code})" if isinstance(exc, urllib.error.HTTPError) else "")
+                self.last_error = f"{type(exc).__name__}"
         self.last_model = None
         return previous
 
@@ -75,10 +86,12 @@ class AITradingStrategyAgent:
             ],
             "response_format": {"type": "json_object"},
             "temperature": 0.1,
-            "max_completion_tokens": 180,
+            "max_tokens": 180,
         }).encode("utf-8")
+        base_url = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+        chat_url = f"{base_url}/chat/completions"
         request = urllib.request.Request(
-            GROQ_CHAT_URL, data=body, method="POST",
+            chat_url, data=body, method="POST",
             headers={"Authorization": f"Bearer {api_key}",
                      "Content-Type": "application/json",
                      # urllib otherwise sends "Python-urllib/3.x", which
