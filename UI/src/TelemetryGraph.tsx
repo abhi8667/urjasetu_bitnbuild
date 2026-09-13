@@ -23,13 +23,22 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
 }) => {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
 
+  // Escape key closes modal
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   // Use history or fallback to at least 24 points based on the current run
   const dataPoints = history.length > 0 ? history : currentBlock ? [currentBlock] : []
 
-  // Chart dimensions
-  const width = 760
-  const height = 180
-  const padding = { top: 25, right: 30, bottom: 25, left: 45 }
+  // Expanded chart dimensions with generous widescreen headroom
+  const width = 1440
+  const height = 380
+  const padding = { top: 40, right: 48, bottom: 44, left: 68 }
   const plotWidth = width - padding.left - padding.right
   const plotHeight = height - padding.top - padding.bottom
 
@@ -74,35 +83,36 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
   const activeOrHovered = hoveredIdx !== null ? dataPoints[hoveredIdx] : currentBlock
 
   return (
-    <div className="telemetry-drawer">
-      <div className="telemetry-header">
-        <div className="telemetry-title-group">
-          <span className="telemetry-pulse-dot" />
-          <h3>REAL-TIME GRID TELEMETRY &amp; LOAD DYNAMICS</h3>
-          <span className="telemetry-tag">IEEE C57.91 &amp; P2P Market</span>
-        </div>
-        <div className="telemetry-controls-group">
-          <div className="telemetry-legend">
-            {dtKeys.map((dt) => (
-              <span key={dt} className="legend-item" style={{ color: DT_COLORS[dt] }}>
-                <span className="legend-color-box" style={{ background: DT_COLORS[dt] }} />
-                {dt}
-              </span>
-            ))}
-            <span className="legend-item" style={{ color: '#eab308' }}>
-              <span className="legend-color-box" style={{ background: '#eab308' }} />
-              Price (₹)
-            </span>
-            <span className="legend-item limit-legend">
-              <span className="legend-dashed-line" />
-              100% Limit
-            </span>
+    <div className="telemetry-modal-backdrop" onClick={onClose}>
+      <div className="telemetry-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="telemetry-header">
+          <div className="telemetry-title-group">
+            <span className="telemetry-pulse-dot" />
+            <h3>REAL-TIME GRID TELEMETRY &amp; LOAD DYNAMICS</h3>
+            <span className="telemetry-tag">IEEE C57.91 &amp; P2P Market</span>
           </div>
-          <button className="telemetry-close-btn" onClick={onClose} title="Close Graph (G)">
-            ✕
-          </button>
+          <div className="telemetry-controls-group">
+            <div className="telemetry-legend">
+              {dtKeys.map((dt) => (
+                <span key={dt} className="legend-item" style={{ color: DT_COLORS[dt] }}>
+                  <span className="legend-color-box" style={{ background: DT_COLORS[dt] }} />
+                  {dt}
+                </span>
+              ))}
+              <span className="legend-item" style={{ color: '#eab308' }}>
+                <span className="legend-color-box" style={{ background: '#eab308' }} />
+                Price (₹)
+              </span>
+              <span className="legend-item limit-legend">
+                <span className="legend-dashed-line" />
+                100% Limit
+              </span>
+            </div>
+            <button className="telemetry-close-btn" onClick={onClose} title="Close Graph (G or Esc)" aria-label="Close">
+              ✕
+            </button>
+          </div>
         </div>
-      </div>
 
       {/* Snapshot Cards */}
       <div className="telemetry-stats-row">
@@ -170,16 +180,16 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
                   y1={y}
                   x2={width - padding.right}
                   y2={y}
-                  stroke={level === 100 ? 'rgba(239, 68, 68, 0.6)' : 'rgba(255, 255, 255, 0.08)'}
-                  strokeDasharray={level === 100 ? '4 3' : undefined}
-                  strokeWidth={level === 100 ? 1.5 : 1}
+                  stroke={level === 100 ? 'rgba(239, 68, 68, 0.65)' : 'rgba(255, 255, 255, 0.08)'}
+                  strokeDasharray={level === 100 ? '5 4' : undefined}
+                  strokeWidth={level === 100 ? 1.8 : 1}
                 />
                 <text
-                  x={padding.left - 6}
-                  y={y + 3}
+                  x={padding.left - 10}
+                  y={y + 4}
                   textAnchor="end"
-                  fill={level === 100 ? '#ef4444' : 'rgba(255, 255, 255, 0.4)'}
-                  fontSize="9"
+                  fill={level === 100 ? '#ef4444' : 'rgba(255, 255, 255, 0.45)'}
+                  fontSize="11"
                   fontFamily="monospace"
                 >
                   {level}%
@@ -198,15 +208,15 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
                   x1={x}
                   y1={padding.top + plotHeight}
                   x2={x}
-                  y2={padding.top + plotHeight + 4}
-                  stroke="rgba(255, 255, 255, 0.2)"
+                  y2={padding.top + plotHeight + 6}
+                  stroke="rgba(255, 255, 255, 0.25)"
                 />
                 <text
                   x={x}
-                  y={padding.top + plotHeight + 14}
+                  y={padding.top + plotHeight + 20}
                   textAnchor="middle"
-                  fill="rgba(255, 255, 255, 0.45)"
-                  fontSize="8.5"
+                  fill="rgba(255, 255, 255, 0.5)"
+                  fontSize="10.5"
                   fontFamily="monospace"
                 >
                   {bp.clock}
@@ -215,18 +225,31 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
             )
           })}
 
-          {/* 100% capacity label */}
-          <text
-            x={width - padding.right - 4}
-            y={y100 - 5}
-            textAnchor="end"
-            fill="#ef4444"
-            fontSize="8.5"
-            fontWeight="bold"
-            letterSpacing="0.5"
-          >
-            CRITICAL LIMIT 100%
-          </text>
+          {/* 100% capacity label with pill badge */}
+          <g>
+            <rect
+              x={width - padding.right - 175}
+              y={y100 - 22}
+              width={170}
+              height={22}
+              rx={6}
+              fill="rgba(239, 68, 68, 0.22)"
+              stroke="rgba(239, 68, 68, 0.65)"
+              strokeWidth={1.2}
+            />
+            <text
+              x={width - padding.right - 90}
+              y={y100 - 7}
+              textAnchor="middle"
+              fill="#fca5a5"
+              fontSize="11"
+              fontWeight="bold"
+              letterSpacing="0.8"
+              fontFamily="monospace"
+            >
+              CRITICAL LIMIT 100%
+            </text>
+          </g>
 
           {/* DT Loading Paths */}
           {dtKeys.map((dt) => (
@@ -235,8 +258,8 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
               d={dtPaths[dt]}
               fill="none"
               stroke={DT_COLORS[dt]}
-              strokeWidth={dt === 'DT-3' ? '2.5' : '1.5'}
-              strokeOpacity={dt === 'DT-3' ? '1' : '0.8'}
+              strokeWidth={dt === 'DT-3' ? '3.2' : '2.0'}
+              strokeOpacity={dt === 'DT-3' ? '1' : '0.85'}
               strokeLinecap="round"
             />
           ))}
@@ -246,9 +269,9 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
             d={pricePath}
             fill="none"
             stroke="#eab308"
-            strokeWidth="1.8"
-            strokeDasharray="3 2"
-            strokeOpacity="0.85"
+            strokeWidth="2.4"
+            strokeDasharray="4 3"
+            strokeOpacity="0.9"
           />
 
           {/* Breach indicators */}
@@ -317,6 +340,7 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
         <span className="footer-status">
           Sentinel: <strong className="green-text">Autonomous Active</strong> · Flow Agent: <strong className="green-text">LP Armed</strong>
         </span>
+      </div>
       </div>
     </div>
   )
