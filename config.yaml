@@ -20,8 +20,8 @@ gst_pct: 5.0
 include_ev_hubs_as_houses: true
 lightgbm_enabled: false
 llm_enabled: false
-groq_primary_model: llama-3.3-70b-versatile
-groq_fallback_model: llama-3.1-8b-instant
+groq_primary_model: qwen/qwen3.8-27b
+groq_fallback_model: openai/gpt-oss-120b
 groq_timeout_seconds: 8.0
 risk_enabled: true
 risk_horizon_blocks: 3

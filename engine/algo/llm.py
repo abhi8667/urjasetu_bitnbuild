@@ -81,7 +81,11 @@ def _call_llm(prompt: str, timeout: float, system: str = _SYSTEM_PROMPT) -> str:
             "messages": [{"role": "system", "content": system},
                          {"role": "user", "content": prompt}],
             "temperature": 0.2,
-            "max_tokens": 400,
+            **({"max_completion_tokens": 2048, "reasoning_effort": "low"}
+               if settings.GROQ_MODEL.startswith("openai/gpt-oss-")
+               else {"max_completion_tokens": 400, "reasoning_effort": "none"}
+               if settings.GROQ_MODEL == "qwen/qwen3.8-27b"
+               else {"max_tokens": 400}),
         },
         timeout=timeout,
     )

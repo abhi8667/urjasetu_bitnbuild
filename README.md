@@ -458,6 +458,29 @@ Deploy the `UI/` directory as a Vite application:
 - **Output Directory**: `dist`
 - **Environment Variable**: `VITE_ENGINE_URL=https://<your-render-engine>.onrender.com`
 
+### Groq model access errors after deployment
+
+Set these variables on the **Render backend** (existing dashboard values override
+the code defaults):
+
+```dotenv
+URJASETU_LLM_ENABLED=true
+GROQ_MODEL=qwen/qwen3.8-27b
+GROQ_FALLBACK_MODEL=openai/gpt-oss-120b
+```
+
+Keep `GROQ_API_KEY` set to your Groq key. Groq now lists the old Llama 3.3 70B
+and Llama 3.1 8B defaults as enterprise models; accounts without access receive
+`model_not_found`. See the [Groq model catalog](https://console.groq.com/docs/models).
+Qwen 3.8 27B is the primary model and uses instruct mode for short strategy
+decisions. GPT-OSS 120B remains the fallback and reserves tokens for reasoning.
+
+Deploy the updated backend and restart it after changing environment variables.
+Simulation events are cached at startup, so a browser refresh alone keeps replaying
+the old failures. Check `/api/health` for the configured model IDs, then check the
+trading strategy in the app for a successful update. Health status `ok` only means
+the server is running; it does not verify Groq access.
+
 ---
 
 ## Authors & Acknowledgments
