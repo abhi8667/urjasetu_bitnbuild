@@ -22,6 +22,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
+
+import httpx
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -66,6 +69,28 @@ async def warm_cache() -> None:
     the container, not for the container AND the simulation.
     """
     await asyncio.to_thread(_sim)
+
+
+@app.on_event("startup")
+async def start_keep_alive() -> None:
+    """Render free tier pinger: pings /api/health every 5 minutes to prevent sleep."""
+    target = os.environ.get("KEEP_ALIVE_URL") or os.environ.get("RENDER_EXTERNAL_URL")
+    if not target:
+        return
+
+    url = target.rstrip("/") + "/api/health"
+
+    async def _ping_loop() -> None:
+        await asyncio.sleep(60)  # Initial wait for application startup
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            while True:
+                try:
+                    await client.get(url)
+                except Exception:
+                    pass
+                await asyncio.sleep(300)  # Ping every 5 minutes
+
+    asyncio.create_task(_ping_loop())
 
 
 # --------------------------------------------------------------- REST

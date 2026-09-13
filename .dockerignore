@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+.env.local
+UI/node_modules
+UI/dist
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+temp/
+docs/

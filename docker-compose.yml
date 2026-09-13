@@ -1,0 +1,37 @@
+services:
+  engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: urjasetu-engine
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - URJASETU_DAYS=30
+      - URJASETU_DERATE=1.0
+      - CORS_ORIGINS=*
+      - URJASETU_LLM_ENABLED=${URJASETU_LLM_ENABLED:-true}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./UI
+      dockerfile: Dockerfile
+      args:
+        - VITE_ENGINE_URL=http://localhost:8000
+    container_name: urjasetu-ui
+    ports:
+      - "3000:80"
+    depends_on:
+      engine:
+        condition: service_healthy
+    restart: unless-stopped
