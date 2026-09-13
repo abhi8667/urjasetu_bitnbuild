@@ -5,6 +5,7 @@ import { SyncedAgentNetwork, useCityBroadcast } from './agentSync'
 import { createDemoRun } from './demoFixture'
 import { DemoTransport, EngineTransport, ReplayTransport } from './transport'
 import { HAS_CONFIGURED_ENGINE } from './config'
+import { TelemetryGraph } from './TelemetryGraph'
 import type { BlockPayload, EventPayload, RunSummary, ScenePayload, Transport, TransportStatus } from './types'
 
 const money = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
@@ -25,6 +26,7 @@ function useGridTransport() {
   const disconnectRef = useRef<(() => void) | null>(null)
   const [scene, setScene] = useState<ScenePayload | null>(null)
   const [block, setBlock] = useState<BlockPayload | null>(null)
+  const [history, setHistory] = useState<BlockPayload[]>([])
   const [status, setStatus] = useState<TransportStatus>('connecting')
   const [events, setEvents] = useState<EventPayload[]>([])
   // The engine streams its own summary. Until it arrives there is no summary
@@ -75,6 +77,15 @@ function useGridTransport() {
           return true
         })
         setBlock(next)
+        setHistory((current) => {
+          const idx = current.findIndex((b) => b.block === next.block)
+          if (idx >= 0) {
+            const copy = [...current]
+            copy[idx] = next
+            return copy
+          }
+          return [...current.slice(-47), next]
+        })
       }),
       transport.onEvent((event) => setEvents((current) => [...current, event].slice(-50))),
       transport.onStatus(setStatus),
@@ -113,13 +124,25 @@ function useGridTransport() {
     )
   }, [block])
 
+  const seek = useCallback((targetBlock: number) => {
+    try {
+      transportRef.current?.seek(targetBlock)
+    } catch {
+      // Ignored
+    }
+  }, [])
+
   const replay = useCallback(() => {
+    if (!offline && HAS_CONFIGURED_ENGINE) {
+      seek(0)
+      return
+    }
     setEvents([])
     setOffline(true)
-    const run = createDemoRun()
+    const run = createDemoRun(scene ?? undefined)
     setSummary(run.summary)
     connect(new ReplayTransport(run))
-  }, [connect])
+  }, [connect, offline, scene, seek])
 
   const reconnect = useCallback(() => {
     setEvents([])
@@ -127,7 +150,7 @@ function useGridTransport() {
     connect(new EngineTransport())
   }, [connect])
 
-  return { scene, block, status, events, command, replay, reconnect, summary, offline }
+  return { scene, block, history, status, events, command, seek, replay, reconnect, summary, offline }
 }
 
 // Circular SVG Progress Gauge
@@ -200,7 +223,7 @@ export default function App() {
 }
 
 function CityApp() {
-  const { scene, block, status, events, command, replay, reconnect, summary, offline } =
+  const { scene, block, history, status, events, command, seek, replay, reconnect, summary, offline } =
     useGridTransport()
   const networkUrl = useCityBroadcast({ block, events, status, offline })
   const traceRef = useRef<HTMLDivElement>(null)
@@ -218,6 +241,7 @@ function CityApp() {
   const showDiscomLedger = detailPanel === 'ledger'
   const showNodeInspector = detailPanel === 'node'
   const [isNightMode, setIsNightMode] = useState(true)
+  const [showTelemetryGraph, setShowTelemetryGraph] = useState(false)
 
   // Open inspector automatically if a node is clicked in 3D
   const handleSelectNode = useCallback((id: string | null) => {
@@ -235,6 +259,7 @@ function CityApp() {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return
       if (event.key.toLowerCase() === 'd' && status !== 'replay') command('derate')
       if (event.key.toLowerCase() === 'c' && status !== 'replay') command('cloud')
+      if (event.key.toLowerCase() === 'g') setShowTelemetryGraph((prev) => !prev)
       if (event.key.toLowerCase() === 'r') replay()
       if (event.key.toLowerCase() === 'l') reconnect()
       if (event.key === '1') setCameraMode('orbit')
@@ -403,30 +428,51 @@ function CityApp() {
 
         {/* Right: Simulation Controls & Live Badge */}
         <div className="header-right-group">
-          {/* Quick Simulation Trigger Buttons */}
-          <div className="quick-sim-buttons">
-            <button
-              className="quick-action-btn"
-              onClick={() => command('derate')}
-              title="Derate central transformer DT-3 (Shortcut: D)"
+          {/* Curated Demo Scenarios Dropdown */}
+          <div className="demo-dropdown-container">
+            <select
+              className="demo-scenario-select"
+              defaultValue=""
+              onChange={(e) => {
+                const val = e.target.value
+                if (val === 'solar-peak') {
+                  seek(10)
+                } else if (val === 'derate') {
+                  command('derate')
+                } else if (val === 'cloud') {
+                  command('cloud')
+                } else if (val === 'evening-peak') {
+                  seek(19)
+                } else if (val === 'replay') {
+                  replay()
+                } else if (val === 'reset') {
+                  reconnect()
+                  command('reset')
+                }
+                e.target.value = ''
+              }}
+              title="Select a curated demonstration scenario"
             >
-              Derate DT-3 <kbd>D</kbd>
-            </button>
-            <button
-              className="quick-action-btn"
-              onClick={() => command('cloud')}
-              title="Simulate cloud bank over solar panels (Shortcut: C)"
-            >
-              Cloud Bank <kbd>C</kbd>
-            </button>
-            <button
-              className="quick-action-btn"
-              onClick={replay}
-              title="Replay simulation block stream (Shortcut: R)"
-            >
-              Replay <kbd>R</kbd>
-            </button>
+              <option value="" disabled>⚡ Demo Scenarios ▾</option>
+              <option value="solar-peak">☀️ 1. Morning Solar Peak (10:00 AM)</option>
+              <option value="cloud">⛅ 2. Cloud Shadow Anomaly (Battery Disch.)</option>
+              <option value="evening-peak">🌆 3. Evening Peak &amp; EV Hubs (19:00 PM)</option>
+              <option value="derate">⚠️ 4. DT-3 Overload Stress (Derate)</option>
+              <option value="replay">🔄 5. Replay 24-Hour Walk</option>
+              <option value="reset">🔁 Reset to Nominal</option>
+            </select>
           </div>
+
+          {/* Telemetry Graph Toggle */}
+          <button
+            className={`telemetry-toggle-btn ${showTelemetryGraph ? 'active' : ''}`}
+            onClick={() => setShowTelemetryGraph(!showTelemetryGraph)}
+            title="Toggle Real-Time Telemetry & Load Curves (Shortcut: G)"
+          >
+            <span className="telemetry-chart-icon">📈</span>
+            <span>Telemetry Graph</span>
+            <kbd>G</kbd>
+          </button>
 
           {/* The label has to distinguish "connected to the engine" from
               "running on the built-in fixture". The old DemoTransport emitted
@@ -1016,6 +1062,16 @@ function CityApp() {
             )}
           </div>
         </div>
+      )}
+
+      {/* 10. Real-Time Telemetry & Load Dynamics Graph */}
+      {showTelemetryGraph && (
+        <TelemetryGraph
+          history={history}
+          currentBlock={block}
+          onSeek={seek}
+          onClose={() => setShowTelemetryGraph(false)}
+        />
       )}
     </div>
   )

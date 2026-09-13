@@ -162,8 +162,8 @@ function eventsFor(block: BlockPayload): EventPayload[] {
   return events
 }
 
-export function createDemoRun(): DemoRun {
-  const scene = makeScene()
+export function createDemoRun(baseScene?: ScenePayload): DemoRun {
+  const scene = baseScene && baseScene.houses.some(h => h.x !== 0 || h.y !== 0) ? baseScene : makeScene()
   const blocks = Array.from({ length: 72 }, (_, block) => makeBlock(scene, block))
   return {
     scene,

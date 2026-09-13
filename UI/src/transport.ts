@@ -114,9 +114,7 @@ export class DemoTransport extends ReplayTransport {
     })
   }
 
-  override seek(_block: number) {
-    throw new Error('Seeking is only available in replay')
-  }
+  // Inherits seek() from ReplayTransport so demo seeking works smoothly
 }
 
 /**
