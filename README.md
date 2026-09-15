@@ -16,7 +16,7 @@
 
 <br />
 
-[![Launch Application](https://img.shields.io/badge/🚀%20Launch%20Live%20Application-urjasetu.vercel.app-7928CA?style=for-the-badge&logo=vercel&logoColor=white)](https://urjasetu-bitnbuild-xuz9.vercel.app/)
+[![Launch Application](https://img.shields.io/badge/🚀%20Launch%20Live%20Application-urjasetu.vercel.app-7928CA?style=for-the-badge&logo=vercel&logoColor=white)](https://urjasetu-ibm-skillup.vercel.app/)
 
 <br />
 <br />
@@ -68,7 +68,7 @@ UrjaSetu bridges economic market clearing with hard electrical engineering const
 3. **P2P Battery Custody Routing**: When a prosumer's residential battery reaches 100% state of charge, excess generation is automatically diverted into neighborhood custodian BESS nodes rather than curtailed or wasted.
 4. **Digital Twin 3D Viewport**: An interactive, low-poly WebGL/Three.js spatial twin rendering 60 premises, 4 commercial EV charging hubs, physical overhead service lines, real-time power flow vectors, and sub-second telemetry curves.
 
-👉 **Experience the live deployment directly in your browser**: **[https://urjasetu.vercel.app/](https://urjasetu-bitnbuild-xuz9.vercel.app/)**
+👉 **Experience the live deployment directly in your browser**: **[https://urjasetu.vercel.app/](https://urjasetu-ibm-skillup.vercel.app/)**
 
 ---
 
