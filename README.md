@@ -10,6 +10,7 @@
 [![Three.js](https://img.shields.io/badge/Three.js-r173-black?style=for-the-badge&logo=three.js&logoColor=white)](https://threejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Build & Tests](https://img.shields.io/badge/Tests-12%20Suites%20Passing-brightgreen?style=for-the-badge&logo=githubactions&logoColor=white)](#automated-testing--formal-invariants)
+[![IBM Bob](https://img.shields.io/badge/IBM%20Bob-Powered-052FAD?style=for-the-badge&logo=ibm&logoColor=white)](https://www.ibm.com/)
 
 **Decentralised Autonomous P2P Energy Microgrid & Transformer Protection System**  
 *Operating across 64 metered physical nodes and 4 distribution transformers over a real surveyed Whitefield (Bengaluru) LT distribution network.*
