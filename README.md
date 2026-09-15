@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://urjasetu-bitnbuild-xuz9.vercel.app/)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://urjasetu.vercel.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -16,7 +16,7 @@
 
 <br />
 
-[![Launch Application](https://img.shields.io/badge/🚀%20Launch%20Live%20Application-urjasetu--bitnbuild--xuz9.vercel.app-7928CA?style=for-the-badge&logo=vercel&logoColor=white)](https://urjasetu-bitnbuild-xuz9.vercel.app/)
+[![Launch Application](https://img.shields.io/badge/🚀%20Launch%20Live%20Application-urjasetu.vercel.app-7928CA?style=for-the-badge&logo=vercel&logoColor=white)](https://urjasetu.vercel.app/)
 
 <br />
 <br />
@@ -50,6 +50,7 @@
 - [Automated Testing & Formal Invariants](#automated-testing--formal-invariants)
 - [API Reference](#api-reference)
 - [Production Deployment](#production-deployment)
+- [How We Used IBM Bob's Plan Mode](#how-we-used-ibm-bobs-plan-mode)
 - [Authors & Acknowledgments](#authors--acknowledgments)
 - [License](#license)
 
@@ -67,7 +68,7 @@ UrjaSetu bridges economic market clearing with hard electrical engineering const
 3. **P2P Battery Custody Routing**: When a prosumer's residential battery reaches 100% state of charge, excess generation is automatically diverted into neighborhood custodian BESS nodes rather than curtailed or wasted.
 4. **Digital Twin 3D Viewport**: An interactive, low-poly WebGL/Three.js spatial twin rendering 60 premises, 4 commercial EV charging hubs, physical overhead service lines, real-time power flow vectors, and sub-second telemetry curves.
 
-👉 **Experience the live deployment directly in your browser**: **[https://urjasetu-bitnbuild-xuz9.vercel.app/](https://urjasetu-bitnbuild-xuz9.vercel.app/)**
+👉 **Experience the live deployment directly in your browser**: **[https://urjasetu.vercel.app/](https://urjasetu.vercel.app/)**
 
 ---
 
@@ -259,7 +260,7 @@ The energy is transferred at high priority, actively charging the host BESS whil
 ## Repository Structure
 
 ```
-urjasetu_bitnbuild/
+urjasetu/
 ├── data/
 │   ├── reference/             # Surveyed device registry, coordinates, transformers
 │   └── telemetry/             # Real smart meter 15-min load & solar time-series
@@ -305,8 +306,8 @@ urjasetu_bitnbuild/
 
 #### 1. Clone the repository
 ```bash
-git clone https://github.com/abhi8667/urjasetu_bitnbuild.git
-cd urjasetu_bitnbuild
+git clone https://github.com/abhi8667/urjasetu.git
+cd urjasetu
 git checkout User-Interface
 ```
 
@@ -443,7 +444,7 @@ ws://localhost:8000/ws
 
 ### 🌐 Live Production Deployment
 The frontend digital twin is deployed and live on **Vercel**:  
-👉 **[https://urjasetu-bitnbuild-xuz9.vercel.app/](https://urjasetu-bitnbuild-xuz9.vercel.app/)**
+👉 **[https://urjasetu.vercel.app/](https://urjasetu.vercel.app/)**
 
 ### 1. Backend Engine on Render
 The repository includes a ready-to-use [`render.yaml`](render.yaml) blueprint:
@@ -483,10 +484,30 @@ the server is running; it does not verify Groq access.
 
 ---
 
+## How We Used IBM Bob's Plan Mode
+
+Throughout the design and engineering of **UrjaSetu**, we utilized **IBM Bob's Plan Mode** as our foundational AI systems architect. Rather than jumping directly into writing ad-hoc code, Plan Mode allowed us to formulate physical contracts, mathematically sound invariants, and decoupled subsystem specifications before touching implementation:
+
+### 1. Contract-First Architectural Decomposition
+- **Strict Unidirectional Layering**: Plan Mode established a clean dependency flow (`Algorithms` &rarr; `Market & Grid Agents` &rarr; `Tick Loop / Ring Buffer` &rarr; `3D Interface`), enforcing that the WebGL frontend renders without executing electrical simulation and algorithmic solvers remain pure, stateless, and instantly unit-testable.
+- **Frozen Protocol Schemas**: Prior to backend simulation or 3D scene construction, Plan Mode drafted frozen Python dataclasses and TypeScript interface contracts (`engine/domain.py` &harr; `UI/src/types.ts`), completely preventing cross-layer drift over WebSocket streams and REST routes.
+
+### 2. Physical Invariants & Mathematical Formulation
+- **Hard Electrical Constraints**: Through Plan Mode, we specified continuous double auction clearing algorithms, the SciPy simplex Linear Program for transformer overload reshaping ($\min \sum (P_{\text{curtail}} + P_{\text{battery}})$ subject to feeder thermal bounds), and the IEEE Std C57.91-2011 dynamic Arrhenius ageing equations ($F_{AA} = \exp\left[\frac{15000}{383} - \frac{15000}{\Theta_H + 273}\right]$).
+- **Formal Invariant Definitions**: Plan Mode formulated the 12 formal physical and economic invariants (e.g. non-negative clearing, conservation of energy, BESS SoC $[0.1, 1.0]$, transformer capacity $\sum P_i \le S_{\max}$) that form the backbone of our automated verification suites.
+
+### 3. Engineering Decision Rationalization (`DECISIONS.md`)
+- **Real-World Grid Adaptation**: When analyzing the raw Bengaluru feeder telemetry, Plan Mode systematically evaluated trade-offs and documented architectural decision records (D1–D14 in `DECISIONS.md`). Key choices included rightsizing transformer ratings to realistic Indian LT standards (125 kVA / 63 kVA) and focusing the protection logic on evening-peak EV concurrency rather than synthetic daytime reverse flows.
+
+### 4. Adversarial Verification & Falsification Engineering
+- **Falsification-Oriented Testing**: Rather than writing tests to simply rubber-stamp code, Plan Mode designed the blueprint for `temp/AGENT_VERIFICATION_GUIDE.md` and `temp/checks/verify_agents.py`—an exhaustive 50-check harness designed to rigorously stress-test and attempt to falsify transformer thermal dynamics, P2P battery custody diversions, and financial settlement ledgers.
+
+---
+
 ## Authors & Acknowledgments
 
 - **Lead Architect & Developer**: [Abhishek](https://github.com/abhi8667)
-- **Built for**: BitNBuild Hackathon
+- **Contributor**: [IBM Bob](https://github.com/IBM/ibm-bob)
 - **Data & Topological Source**: Real surveyed low-voltage distribution network in Whitefield, Bengaluru (BESCOM 11 kV / 415 V feeder system).
 - **Standards & Methodology**: Thermal calculations follow **IEEE Std C57.91-2011** (Guide for Loading Mineral-Oil-Immersed Transformers).
 

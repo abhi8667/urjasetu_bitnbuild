@@ -107,8 +107,48 @@ button {
   animation: spin 0.85s linear infinite;
 }
 
+.loader-fallback-btn {
+  margin-top: 4px;
+  padding: 8px 18px;
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(0, 240, 255, 0.08);
+  color: var(--accent-cyan);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.loader-fallback-btn:hover {
+  background: rgba(0, 240, 255, 0.16);
+  border-color: rgba(0, 240, 255, 0.6);
+}
+
+.loader-fallback-btn:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* Nothing in this UI showed a focus ring, so the whole HUD was unusable by
+   keyboard even though every control is a real button. */
+button:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ===================================================================

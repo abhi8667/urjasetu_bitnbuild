@@ -17,6 +17,19 @@ const title = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 const orDash = (value: number | null | undefined, digits = 2, unit = '') =>
   value == null || Number.isNaN(value) ? '—' : `${value.toFixed(digits)}${unit}`
 
+/** Day one of the simulated run. The engine counts blocks from a day offset
+ *  rather than a calendar, so the UI anchors that offset to a stated date
+ *  instead of printing one fixed day for every block of a 30-day walk. */
+const RUN_START = new Date(2025, 8, 22) // 22 Sep 2025
+const simDate = (dayOffset: number | undefined) => {
+  if (dayOffset == null) return '—'
+  const date = new Date(RUN_START)
+  date.setDate(date.getDate() + dayOffset)
+  return date.toLocaleDateString('en-IN', {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+  })
+}
+
 function useGridTransport() {
   // Kept only as the offline fallback. Everything in it is invented in
   // TypeScript, so it must never be what the app opens on when an engine is
@@ -331,19 +344,43 @@ function CityApp() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (window.location.hash === '#/agents') return
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return
-      if (event.key.toLowerCase() === 'd' && status !== 'replay') command('derate')
-      if (event.key.toLowerCase() === 'c' && status !== 'replay') command('cloud')
-      if (event.key.toLowerCase() === 'g') setShowTelemetryGraph((prev) => !prev)
-      if (event.key.toLowerCase() === 'r') replay()
-      if (event.key.toLowerCase() === 'l') reconnect()
-      if (event.key === '1') setCameraMode('orbit')
-      if (event.key === '2') setCameraMode('top-down')
-      if (event.key === '3') setCameraMode('perspective')
+      // Typing 'd' into a field must not derate a transformer. The guard used
+      // to cover input and select only, so a textarea or any contenteditable
+      // surface still fired grid commands mid-word.
+      const target = event.target
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLSelectElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) return
+      // A modifier means the user is driving the browser, not the grid:
+      // Ctrl+R should reload the page, not restart the replay.
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+
+      switch (event.key.toLowerCase()) {
+        case 'd': if (status !== 'replay') command('derate'); break
+        case 'c': if (status !== 'replay') command('cloud'); break
+        case 'g': setShowTelemetryGraph((prev) => !prev); break
+        case 'r': replay(); break
+        case 'l': reconnect(); break
+        case '1': setCameraMode('orbit'); break
+        case '2': setCameraMode('top-down'); break
+        case '3': setCameraMode('perspective'); break
+        // Escape closes whichever floating window is open. Every panel had a
+        // close button and no keyboard way out.
+        case 'escape':
+          if (showTelemetryGraph) setShowTelemetryGraph(false)
+          else if (custodyHighlight) setCustodyHighlight(null)
+          else setDetailPanel(null)
+          break
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [command, replay, status])
+    // `reconnect` was missing here, so the 'L' shortcut kept calling the
+    // reconnect closure captured on the first render.
+  }, [command, replay, reconnect, status, showTelemetryGraph, custodyHighlight])
 
   // Computed metrics for HUD
   // Traded energy this block, as traded. The old version added a literal 140
@@ -455,9 +492,25 @@ function CityApp() {
           custodyHighlight={custodyHighlight}
         />
       ) : (
-        <div className="scene-loader">
+        <div className="scene-loader" role="status" aria-live="polite">
           <div className="pulse-spinner" />
-          <span>Synchronizing Urban Microgrid Network...</span>
+          {/* The spinner alone was the whole screen for as long as the engine
+              stayed unreachable — a Render free-tier cold start is about a
+              minute, and a viewer with no engine at all waited forever without
+              being told why. The transport keeps retrying either way; this just
+              says what it is doing and offers the fixture as a way through. */}
+          <span>
+            {status === 'disconnected'
+              ? 'Engine unreachable — still retrying'
+              : status === 'stale'
+                ? 'Waiting for the engine to wake (cold start takes about a minute)'
+                : 'Synchronizing Urban Microgrid Network…'}
+          </span>
+          {status === 'disconnected' && (
+            <button className="loader-fallback-btn" onClick={replay}>
+              Continue on built-in demo data
+            </button>
+          )}
         </div>
       )}
 
@@ -495,6 +548,7 @@ function CityApp() {
           <button
             className={`nav-pill-btn ${showTransformerHealth ? 'pill-active' : ''}`}
             onClick={() => setDetailPanel(current => current === 'health' ? null : 'health')}
+            aria-pressed={detailPanel === 'health'}
           >
             <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 2v20M7 7h10M5 12h14M7 17h10" />
@@ -506,6 +560,7 @@ function CityApp() {
           <button
             className={`nav-pill-btn ${showDiscomLedger ? 'pill-active' : ''}`}
             onClick={() => setDetailPanel(current => current === 'ledger' ? null : 'ledger')}
+            aria-pressed={detailPanel === 'ledger'}
           >
             <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="4" y="3" width="16" height="18" rx="2" />
@@ -518,6 +573,7 @@ function CityApp() {
           <button
             className={`nav-pill-btn ${showNodeInspector ? 'pill-active' : ''}`}
             onClick={() => setDetailPanel(current => current === 'node' ? null : 'node')}
+            aria-pressed={detailPanel === 'node'}
           >
             <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -535,6 +591,7 @@ function CityApp() {
           <div className="demo-dropdown-container">
             <select
               className="demo-scenario-select"
+              aria-label="Curated demonstration scenario"
               defaultValue=""
               onChange={(e) => {
                 const val = e.target.value
@@ -592,7 +649,8 @@ function CityApp() {
           {/* Telemetry Graph Toggle */}
           <button
             className={`telemetry-toggle-btn ${showTelemetryGraph ? 'active' : ''}`}
-            onClick={() => setShowTelemetryGraph(!showTelemetryGraph)}
+            onClick={() => setShowTelemetryGraph((prev) => !prev)}
+            aria-pressed={showTelemetryGraph}
             title="Toggle Real-Time Telemetry & Load Curves (Shortcut: G)"
           >
             <span className="telemetry-chart-icon">📈</span>
@@ -615,7 +673,7 @@ function CityApp() {
 
       {/* Dedicated Battery Custody Scenario Alert Banner */}
       {custodyHighlight && (
-        <div className="custody-scenario-banner">
+        <div className="custody-scenario-banner" role="status">
           <span className="custody-banner-pulse" />
           <span className="custody-banner-text">
             <strong>🔋 P2P Battery Custody Active:</strong> Solar rooftop at <strong>{custodyHighlight.from}</strong> has a full battery. Flow Agent diverted <strong>{custodyHighlight.kwh} kWh</strong> surplus into neighbor <strong>{custodyHighlight.to}</strong>'s BESS.
@@ -743,16 +801,19 @@ function CityApp() {
       {/* 4. Top-Right Floating HUD Card: Date, Digital Clock, Night Mode (Image 1) */}
       <aside className="hud-card hud-top-right">
         <div className="hud-clock-section">
-          <span className="hud-date-text">
-            {block ? `Mon, 22 Sep 2025` : 'Mon, 22 Sep 2025'}
-          </span>
-          <div className="hud-digital-clock">
-            {block ? `${block.clock}:32` : '19:14:32'}
-          </div>
+          {/* Was the literal 'Mon, 22 Sep 2025' in both branches of a ternary,
+              and a clock that appended a fixed ':32' seconds to the block's own
+              time — so the wall clock on a 30-day run never left day one and
+              ticked seconds that no part of the engine measures. The engine
+              stamps every block with a day offset; the date follows it, and the
+              clock shows the block time as given. */}
+          <span className="hud-date-text">{simDate(block?.day)}</span>
+          <div className="hud-digital-clock">{block?.clock ?? '--:--'}</div>
         </div>
         <button
           className="mode-toggle-pill"
           onClick={() => setIsNightMode((v) => !v)}
+          aria-pressed={isNightMode}
           title="Toggle Night / Evening Lighting"
         >
           <span className="mode-moon-icon">🌙</span>
@@ -766,6 +827,7 @@ function CityApp() {
           <button
             className={`cam-view-btn ${cameraMode === 'orbit' ? 'cam-active' : ''}`}
             onClick={() => setCameraMode('orbit')}
+            aria-pressed={cameraMode === 'orbit'}
             title="Orbit mode: continuous 360° rotation around grid (Press 1)"
           >
             <svg className="cam-icon cam-icon-orbit" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -779,6 +841,7 @@ function CityApp() {
           <button
             className={`cam-view-btn ${cameraMode === 'top-down' ? 'cam-active' : ''}`}
             onClick={() => setCameraMode('top-down')}
+            aria-pressed={cameraMode === 'top-down'}
             title="Top-Down view: 2D overhead map (Press 2)"
           >
             <svg className="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -792,6 +855,7 @@ function CityApp() {
           <button
             className={`cam-view-btn ${cameraMode === 'perspective' ? 'cam-active' : ''}`}
             onClick={() => setCameraMode('perspective')}
+            aria-pressed={cameraMode === 'perspective'}
             title="Perspective view: isometric 3D angle (Press 3)"
           >
             <svg className="cam-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -830,7 +894,7 @@ function CityApp() {
           <div className="window-title-row"><span className="dot-cyan" /><h3>AGENT ACTIVITY</h3></div>
           <a href={networkUrl} target="_blank" rel="noopener noreferrer" aria-label="Open 3D agent network in a new tab" style={{ color: 'var(--accent-cyan)' }}>↗</a>
         </div>
-        <div className="window-body stream-log-body" ref={traceRef} role="log">
+        <div className="window-body stream-log-body" ref={traceRef} role="log" aria-live="polite" aria-relevant="additions">
           {events.length === 0 && <p className="stream-empty-text">Waiting for agent decisions…</p>}
           {events.map((event, index) => <div className="stream-log-entry" key={`${event.block}-${index}`}>
             <span className="log-dot" style={{ background: event.agent === 'ai_trading' || event.agent === 'llm' ? '#bc8aff' : event.agent === 'grid_risk' ? '#50e4ed' : '#ffbd69' }} />
@@ -843,7 +907,7 @@ function CityApp() {
 
       {/* 8. Floating Multi-Window Modal: TRANSFORMER HEALTH & P2P LEDGER (Image 2) */}
       {showTransformerHealth && (
-        <div className="floating-window window-transformer-ledger">
+        <div className="floating-window window-transformer-ledger" role="dialog" aria-label="Transformer health and P2P ledger">
           <div className="window-header">
             <div className="window-title-row">
               <span className="dot-amber" />
@@ -944,7 +1008,7 @@ function CityApp() {
 
       {/* 9. Floating Multi-Window Modal: DISCOM LEDGER & IMPACT */}
       {showDiscomLedger && (
-        <div className="floating-window window-discom-ledger">
+        <div className="floating-window window-discom-ledger" role="dialog" aria-label="DISCOM ledger and grid comparison">
           <div className="window-header">
             <div className="window-title-row">
               <span className="dot-green" />
@@ -1070,7 +1134,7 @@ function CityApp() {
 
       {/* 10. Floating Multi-Window Modal: NODE INSPECTOR */}
       {showNodeInspector && (
-        <div className="floating-window window-node-inspector">
+        <div className="floating-window window-node-inspector" role="dialog" aria-label="Node inspector">
           <div className="window-header">
             <div className="window-title-row">
               <span className="dot-cyan" />
@@ -1132,8 +1196,12 @@ function CityApp() {
                   <div className="node-stat-box">
                     <span>Rooftop Solar</span>
                     <strong>
+                      {/* `selectedHouse.pv_kw || 3.0` printed 3.0 kWp for any
+                          premises whose registry rating the scene did not
+                          carry — a rating that reads exactly like a measured
+                          one. */}
                       {selectedHouse.has_pv || isSharingElectricity
-                        ? `${orDash(selectedHouse.pv_kw || 3.0, 1)} kWp`
+                        ? `${orDash(selectedHouse.pv_kw, 1)} kWp`
                         : 'None'}
                     </strong>
                     <small>{selectedHouse.has_pv || isSharingElectricity ? 'Rated capacity' : 'Consumer node'}</small>
@@ -1147,7 +1215,13 @@ function CityApp() {
                         : isReceivingCustody
                         ? `${Math.round((selectedReading?.soc_frac ?? (custodyChargePct / 100)) * 100)}% ⚡ Charging`
                         : selectedHouse.has_battery
-                        ? `${selectedReading?.soc_frac != null ? Math.round(selectedReading.soc_frac * 100) : 80}%`
+                        ? orDash(
+                            selectedReading?.soc_frac != null
+                              ? selectedReading.soc_frac * 100
+                              : null,
+                            0,
+                            '%',
+                          )
                         : 'Not installed'}
                     </strong>
                     <small>

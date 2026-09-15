@@ -15,7 +15,7 @@ passes.
 ## 0. Setup, and the one command that runs everything
 
 ```bash
-cd /path/to/urjasetu_bitnbuild
+cd /path/to/urjasetu
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
