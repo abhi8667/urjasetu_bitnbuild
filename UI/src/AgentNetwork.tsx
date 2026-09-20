@@ -28,6 +28,27 @@ const routes = [
 ]
 const agentId = (event: EventPayload) => ({ risk: 'grid_risk', strategy: 'ai_trading', llm: 'ai_trading' }[event.agent] ?? event.agent)
 
+function EventText({ event }: { event: EventPayload }) {
+  if (event.kind !== 'ai_strategy_thinking') return <p>{event.text}</p>
+  const preview = event.text.length > 240 ? `${event.text.slice(0, 240).trimEnd()}...` : event.text
+  return <details className="reasoning-details">
+    <summary><span>{preview}</span><em>Show full reasoning</em></summary>
+    <p>{event.text}</p>
+  </details>
+}
+
+function newestBlocksFirst(events: EventPayload[]) {
+  const groups: EventPayload[][] = []
+  for (const event of events.slice(-20)) {
+    const group = groups.at(-1)
+    if (!group || group[0].block !== event.block) groups.push([event])
+    else group.push(event)
+  }
+  // Newest block first, chronological order inside a block, so an LLM's
+  // thinking remains visibly above the final strategy that it produced.
+  return groups.reverse().flat()
+}
+
 class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
@@ -104,7 +125,7 @@ export function AgentNetwork({ events, status, offline, block, synchronized }: {
   }, [events, block?.block])
   const visible = agents.filter((agent) => filter === 'All' || agent.family === filter)
   const current = agents.find((agent) => agent.id === selected)
-  const filteredEvents = events.filter((event) => (!selected || agentId(event) === selected) && (filter === 'All' || agents.some((a) => a.id === agentId(event) && a.family === filter))).slice(-20).reverse()
+  const filteredEvents = newestBlocksFirst(events.filter((event) => (!selected || agentId(event) === selected) && (filter === 'All' || agents.some((a) => a.id === agentId(event) && a.family === filter))))
   return <main className="agent-network">
     <header className="network-header">
       <a href="#/" className="network-back">← <span>UrjaSetu</span></a>
@@ -139,7 +160,7 @@ export function AgentNetwork({ events, status, offline, block, synchronized }: {
         <div className="network-feed-title"><h2>{current ? 'Agent activity' : 'Activity stream'}</h2><span>{filteredEvents.length} recent</span></div>
         <div className="network-feed" role="log" aria-label="Recent agent events">{filteredEvents.length ? filteredEvents.map((event, index) => {
           const agent = agents.find(a => a.id === agentId(event))
-          return <article key={`${events.length}-${index}`} style={{ '--agent-color': agent ? colors[agent.family] : '#78e3b0' } as CSSProperties}><div><strong>{agent?.name ?? event.agent}</strong><span>BLOCK {event.block}</span></div><p>{event.text}</p><small>{event.kind.replaceAll('_', ' ')}</small></article>
+          return <article className={event.kind === 'ai_strategy_thinking' ? 'is-thinking' : ''} key={`${events.length}-${index}`} style={{ '--agent-color': agent ? colors[agent.family] : '#78e3b0' } as CSSProperties}><div><strong>{agent?.name ?? event.agent}{event.kind === 'ai_strategy_thinking' && <em className="thinking-badge">THINKING</em>}</strong><span>BLOCK {event.block}</span></div><EventText event={event} /><small>{event.kind.replaceAll('_', ' ')}</small></article>
         }) : <p className="network-empty">No events received{current ? ` from ${current.name}` : ''}. Waiting for activity in this stream.</p>}</div>
         <p className="network-note">{offline ? 'Demo events. ' : ''}Links show the documented workflow; recipients are inferred. Bubbles represent agent roles; consumer and prosumer pools are grouped.</p>
       </aside>

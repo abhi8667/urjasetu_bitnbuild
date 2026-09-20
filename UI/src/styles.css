@@ -779,6 +779,43 @@ button {
   line-height: 1.5;
 }
 
+.stream-log-entry.is-thinking {
+  border-left: 2px solid #bc8aff;
+  padding-left: 8px;
+  background: linear-gradient(90deg, #bc8aff12, transparent);
+}
+
+.thinking-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid #bc8aff66;
+  border-radius: 999px;
+  color: #d8bfff;
+  font-size: 8px;
+  font-style: normal;
+  letter-spacing: .08em;
+}
+
+.reasoning-details summary {
+  cursor: pointer;
+  list-style: none;
+}
+.reasoning-details summary::-webkit-details-marker { display: none; }
+.reasoning-details summary span { display: block; }
+.reasoning-details summary em {
+  display: block;
+  margin-top: 5px;
+  color: #bc8aff;
+  font-size: 9px;
+  font-style: normal;
+  letter-spacing: .04em;
+}
+.reasoning-details[open] summary span { display: none; }
+.reasoning-details[open] summary em { font-size: 0; }
+.reasoning-details[open] summary em::after { content: 'Hide full reasoning'; font-size: 9px; }
+.reasoning-details p { margin: 6px 0 0; }
+
 .log-dot {
   width: 6px;
   height: 6px;

@@ -42,8 +42,10 @@ class GroqRequestTests(unittest.TestCase):
                 body = json.loads(send.call_args.args[0].data)
                 self.assertEqual(body["model"], model)
                 qwen = model == "qwen/qwen3.8-27b"
-                self.assertEqual(body["reasoning_effort"], "none" if qwen else "low")
-                self.assertEqual(body["max_completion_tokens"], 400 if qwen else 2048)
+                self.assertEqual(body["reasoning_effort"], "low")
+                self.assertEqual(body["max_completion_tokens"], 2048)
+                self.assertEqual(body.get("reasoning_format"), "parsed" if qwen else None)
+                self.assertEqual(body.get("include_reasoning"), None if qwen else True)
                 self.assertNotIn("max_tokens", body)
                 self.assertEqual(body["response_format"], {"type": "json_object"})
 

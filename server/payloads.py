@@ -326,6 +326,9 @@ def event_text(topic: str, payload: dict) -> str:
         return (f"ML risk: {payload.get('transformer_id')} overload probability "
                 f"{payload.get('risk_score', 0):.1%} over the next "
                 f"{payload.get('horizon_blocks')} blocks (simulation-trained)")
+    if topic == "ai_strategy_thinking":
+        model = payload.get("model") or "LLM"
+        return f"Reasoning ({model}): {payload.get('reasoning') or 'No rationale returned'}"
     if topic in ("ai_strategy_updated", "ai_strategy_status"):
         state = payload.get("state")
         if state == "disabled":

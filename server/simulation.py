@@ -40,7 +40,7 @@ TRACE_TOPICS = (
     "reshape_proposed", "reshape_applied", "fallback_curtailed",
     "ageing_applied", "battery_moved", "delivery_shortfall",
     "bill_lines_posted", "strategy_updated", "grid_risk_predicted",
-    "ai_strategy_updated", "ai_strategy_status",
+    "ai_strategy_thinking", "ai_strategy_updated", "ai_strategy_status",
 )
 
 #: Which agent each topic belongs to, for the UI's agent-theatre column.
@@ -58,6 +58,7 @@ _AGENT_OF = {
     "bill_lines_posted": "settlement",
     "strategy_updated": "ai_trading",
     "grid_risk_predicted": "grid_risk",
+    "ai_strategy_thinking": "ai_trading",
     "ai_strategy_updated": "ai_trading",
     "ai_strategy_status": "ai_trading",
 }

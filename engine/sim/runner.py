@@ -310,6 +310,14 @@ class Runner:
                      "fallback" if strategy_agent.last_model is None else
                      "decided" if updated else "reused")
             strategy = self.orders.strategy
+            if strategy_agent.last_reasoning:
+                # The provider returns this separately from the final JSON. It
+                # is deliberately published first so both activity UIs show
+                # the rationale before the decision it produced.
+                self.bus.publish("ai_strategy_thinking", block, "ai_trading", {
+                    "model": strategy_agent.last_model,
+                    "reasoning": strategy_agent.last_reasoning,
+                })
             self.bus.publish("ai_strategy_updated" if updated else "ai_strategy_status",
                              block, "ai_trading", {
                 "state": state, "model": strategy_agent.last_model,

@@ -3,7 +3,7 @@ import unittest
 from dataclasses import replace
 from unittest.mock import patch
 
-from engine.agents.ai_trading import AITradingStrategyAgent
+from engine.agents.ai_trading import AITradingStrategyAgent, LLMResponse
 from engine.algo import llm
 from engine.config import DEFAULT
 from server.simulation import build_simulation
@@ -37,6 +37,18 @@ class StrategyStreamTests(unittest.TestCase):
         provider.assert_not_called()
         self.assertEqual(sum(e['agent'] == 'grid_risk' for e in run.events), 96)
         self.assertTrue(all('disabled' in e['text'] for e in run.events if e['agent'] == 'ai_trading'))
+
+    def test_reasoning_is_emitted_before_the_final_strategy(self):
+        response = LLMResponse(
+            content='{"discount":0.81,"margin":0.13}',
+            reasoning='High grid risk means bids should be less aggressive.',
+        )
+        with patch.object(AITradingStrategyAgent, '_groq_request', return_value=response):
+            run = build_simulation(config=replace(DEFAULT, llm_enabled=True), days=1)
+        ai_events = [e for e in run.events if e['block'] == 0 and e['agent'] == 'ai_trading']
+        self.assertEqual(ai_events[0]['kind'], 'ai_strategy_thinking')
+        self.assertEqual(ai_events[1]['kind'], 'ai_strategy_updated')
+        self.assertIn('High grid risk', ai_events[0]['text'])
 
     def test_provider_failure_is_visible_and_simulation_finishes(self):
         with patch.object(AITradingStrategyAgent, '_groq_request', side_effect=TimeoutError('private details')) as provider:

@@ -17,6 +17,15 @@ const title = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 const orDash = (value: number | null | undefined, digits = 2, unit = '') =>
   value == null || Number.isNaN(value) ? '—' : `${value.toFixed(digits)}${unit}`
 
+function EventText({ event }: { event: EventPayload }) {
+  if (event.kind !== 'ai_strategy_thinking') return <>{event.text}</>
+  const preview = event.text.length > 210 ? `${event.text.slice(0, 210).trimEnd()}...` : event.text
+  return <details className="reasoning-details">
+    <summary><span>{preview}</span><em>Show full reasoning</em></summary>
+    <p>{event.text}</p>
+  </details>
+}
+
 function useGridTransport() {
   // Kept only as the offline fallback. Everything in it is invented in
   // TypeScript, so it must never be what the app opens on when an engine is
@@ -832,9 +841,9 @@ function CityApp() {
         </div>
         <div className="window-body stream-log-body" ref={traceRef} role="log">
           {events.length === 0 && <p className="stream-empty-text">Waiting for agent decisions…</p>}
-          {events.map((event, index) => <div className="stream-log-entry" key={`${event.block}-${index}`}>
+          {events.map((event, index) => <div className={`stream-log-entry ${event.kind === 'ai_strategy_thinking' ? 'is-thinking' : ''}`} key={`${event.block}-${index}`}>
             <span className="log-dot" style={{ background: event.agent === 'ai_trading' || event.agent === 'llm' ? '#bc8aff' : event.agent === 'grid_risk' ? '#50e4ed' : '#ffbd69' }} />
-            <span className="log-text"><strong className="log-agent">{title(event.agent)}</strong>{event.text}</span>
+            <span className="log-text"><strong className="log-agent">{title(event.agent)}{event.kind === 'ai_strategy_thinking' && <em className="thinking-badge">THINKING</em>}</strong><EventText event={event} /></span>
             <span className="log-time">B{event.block}</span>
           </div>)}
         </div>

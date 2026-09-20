@@ -296,6 +296,14 @@
   margin:0 0 19px;
 }
 
+.network-feed article.is-thinking {
+  border-color: #bc8aff66;
+  background: linear-gradient(135deg, #bc8aff14, transparent);
+}
+
+.network-feed .reasoning-details { margin: 8px 0; }
+.network-feed .reasoning-details p { color: #b8bfd2; line-height: 1.55; }
+
 .network-feed article>div {
   display:flex;
   justify-content:space-between;
