@@ -1,5 +1,6 @@
-"""The three LLM call sites, backed by Groq. Cuttable — the engine must run
-fully without them, and PRD integration check 10 is exactly that claim.
+"""The three LLM call sites. Supports IBM watsonx.ai (default) and Groq (legacy).
+Cuttable — the engine must run fully without them, and PRD integration check 10
+is exactly that claim.
 
 Three things this file used to get wrong:
 
@@ -12,11 +13,19 @@ Three things this file used to get wrong:
   * `_CLAMPS` guessed that the spec's ".margin" meant `bid_aggression`, with an
     OPEN QUESTION comment. `StrategyParams` has a `margin` field. It is `margin`.
 
+IBM watsonx.ai integration (Sub-Task 1):
+  * When LLM_PROVIDER=watsonx, `_call_llm` exchanges the IBM Cloud IAM API key
+    for a bearer token (cached ~60 min) and calls the watsonx.ai text-generation
+    REST API at /ml/v1/text/generation?version=2023-05-29.
+  * Groq remains available as LLM_PROVIDER=groq for backward compatibility.
+  * The raise-on-failure contract is identical regardless of provider, so every
+    call site's fallback path is exercised the same way by tests.
+
 WHAT THE LLM IS AND IS NOT ALLOWED TO DO (LM1). It may move exactly four
 strategy numbers, each clamped to a configured range before anything downstream
 sees it, and it may write one line of prose for the trace. It cannot clear a
-market, move a kWh, price a trade, or touch an invariant. If Groq is slow,
-absent, rate-limited, or returns nonsense, every function here returns the
+market, move a kWh, price a trade, or touch an invariant. If the provider is
+slow, absent, rate-limited, or returns nonsense, every function here returns the
 deterministic answer instead and the run is unaffected — which is why the engine
 can be demonstrated with no key at all.
 """
@@ -28,7 +37,7 @@ from engine.domain import Breach, StrategyParams, TransformerState
 from engine import settings
 
 #: Read once at import, from the environment. True only when the feature is
-#: switched on AND a key exists — see engine/settings.py.
+#: switched on AND the active provider's credentials exist — see engine/settings.py.
 LLM_ENABLED = settings.LLM_ENABLED
 
 # LM1: the only fields the LLM may move, each with the range it is clamped to.
@@ -58,19 +67,50 @@ def _clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, value))
 
 
-def _call_llm(prompt: str, timeout: float, system: str = _SYSTEM_PROMPT) -> str:
-    """The single real network call site.
+def _call_llm_watsonx(prompt: str, timeout: float, system: str = _SYSTEM_PROMPT) -> str:
+    """Call IBM watsonx.ai text generation REST API.
 
-    Every public function below routes through here, so it is the only thing a
-    test needs to monkeypatch to simulate a timeout, a malformed response, or a
-    normal reply. It raises on any failure — by design, so that "no backend
-    configured" reaches exactly the same fallback path a genuine timeout would,
-    and there is no second, untested code path that only runs in production.
+    Raises on any failure — preserving the identical raise-on-failure contract
+    that Groq used, so every fallback path is exercised the same way.
     """
-    if not LLM_ENABLED:
-        raise RuntimeError("LLM disabled: see URJASETU_LLM_ENABLED / GROQ_API_KEY")
+    import httpx  # imported lazily so the engine runs without httpx
 
-    import httpx           # imported lazily so the engine runs without httpx
+    token = settings._watsonx_token()   # raises if key is missing / IAM fails
+    url = (f"{settings.WATSONX_URL}/ml/v1/text/generation"
+           "?version=2023-05-29")
+    # Combine system + user prompts into a single input string.
+    # Granite and Llama both honour a simple "<|system|>\n...\n<|user|>\n..." format,
+    # but watsonx.ai text_generation takes a flat "input" string, not messages,
+    # so we construct it manually.
+    full_input = f"{system}\n\n{prompt}"
+    response = httpx.post(
+        url,
+        headers={"Authorization": f"Bearer {token}",
+                 "Content-Type": "application/json",
+                 "Accept": "application/json"},
+        json={
+            "model_id": settings.WATSONX_MODEL_ID,
+            "project_id": settings.WATSONX_PROJECT_ID,
+            "input": full_input,
+            "parameters": {
+                "decoding_method": "greedy",
+                "max_new_tokens": 400,
+                "temperature": 0.2,
+                "repetition_penalty": 1.05,
+            },
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    return response.json()["results"][0]["generated_text"]
+
+
+def _call_llm_groq(prompt: str, timeout: float, system: str = _SYSTEM_PROMPT) -> str:
+    """Legacy Groq call site (LLM_PROVIDER=groq).
+
+    Identical raise-on-failure contract to the watsonx path.
+    """
+    import httpx  # imported lazily
 
     response = httpx.post(
         f"{settings.GROQ_BASE_URL}/chat/completions",
@@ -91,6 +131,26 @@ def _call_llm(prompt: str, timeout: float, system: str = _SYSTEM_PROMPT) -> str:
     )
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
+
+
+def _call_llm(prompt: str, timeout: float, system: str = _SYSTEM_PROMPT) -> str:
+    """The single real network call site.
+
+    Routes to IBM watsonx.ai (default) or Groq (legacy) based on LLM_PROVIDER.
+    Every public function below routes through here, so it is the only thing a
+    test needs to monkeypatch to simulate a timeout, a malformed response, or a
+    normal reply. It raises on any failure — by design, so that "no backend
+    configured" reaches exactly the same fallback path a genuine timeout would,
+    and there is no second, untested code path that only runs in production.
+    """
+    if not LLM_ENABLED:
+        raise RuntimeError(
+            f"LLM disabled: provider={settings.LLM_PROVIDER}, "
+            "check URJASETU_LLM_ENABLED / WATSONX_API_KEY / GROQ_API_KEY")
+
+    if settings.LLM_PROVIDER == "groq":
+        return _call_llm_groq(prompt, timeout, system)
+    return _call_llm_watsonx(prompt, timeout, system)
 
 
 def daily_strategy(weather, price_history, previous: StrategyParams | None = None,

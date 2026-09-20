@@ -73,7 +73,13 @@ async def warm_cache() -> None:
 
 @app.on_event("startup")
 async def start_keep_alive() -> None:
-    """Render free tier pinger: pings /api/health every 5 minutes to prevent sleep."""
+    """Render free-tier pinger: pings /api/health every 5 minutes to prevent sleep.
+
+    Automatically disabled when IBM_CODE_ENGINE=true — Code Engine does not
+    sleep, so the pinger is unnecessary and would only waste quota.
+    """
+    if settings.IBM_CODE_ENGINE:
+        return  # Code Engine never sleeps; pinger not needed
     target = os.environ.get("KEEP_ALIVE_URL") or os.environ.get("RENDER_EXTERNAL_URL")
     if not target:
         return
@@ -97,11 +103,17 @@ async def start_keep_alive() -> None:
 
 @app.get("/api/health")
 async def health() -> dict:
-    """Render polls this. It reports what is actually loaded, not just 200."""
+    """Health endpoint — polled by Render/Code Engine and the UI.
+
+    Reports what is actually loaded so the UI can show "IBM watsonx.ai active"
+    or "deterministic defaults" rather than leaving provider status ambiguous.
+    """
     return {
         "status": "ok",
         "llm": llm.LLM_ENABLED,
         "llm_detail": settings.llm_status(),
+        "app_config_connected": settings._app_config_ready,
+        "deployment": "ibm_code_engine" if settings.IBM_CODE_ENGINE else "other",
         "cached_runs": [{"days": d, "derate": r} for d, r in CACHE.keys()],
         "default_days": settings.DAYS,
         "default_derate": settings.DERATE,

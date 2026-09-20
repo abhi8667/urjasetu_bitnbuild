@@ -1,4 +1,4 @@
-﻿"""Verify real simulation recording with deterministic provider substitutes."""
+"""Verify real simulation recording with deterministic provider substitutes."""
 import unittest
 from dataclasses import replace
 from unittest.mock import patch
@@ -15,7 +15,10 @@ class StrategyStreamTests(unittest.TestCase):
         def provider(model, context, timeout):
             contexts.append(context)
             return '{"discount":0.81,"margin":0.13}'
-        with patch.object(AITradingStrategyAgent, '_groq_request', side_effect=provider), patch.object(llm, '_call_llm') as legacy:
+        # Patch both transports so the test works regardless of LLM_PROVIDER value.
+        with patch.object(AITradingStrategyAgent, '_groq_request', side_effect=provider), \
+             patch.object(AITradingStrategyAgent, '_watsonx_request', side_effect=provider), \
+             patch.object(llm, '_call_llm') as legacy:
             run = build_simulation(config=replace(DEFAULT, llm_enabled=True), days=1)
         legacy.assert_not_called()
         self.assertEqual(len(contexts), 1)
@@ -32,16 +35,25 @@ class StrategyStreamTests(unittest.TestCase):
         self.assertEqual(sum('reused for this block' in e['text'] for e in run.events), 23)
 
     def test_disabled_ai_keeps_ml_running_without_provider_calls(self):
-        with patch.object(AITradingStrategyAgent, '_groq_request') as provider:
+        # Patch both transports to verify neither is called when LLM is disabled.
+        with patch.object(AITradingStrategyAgent, '_groq_request') as provider_groq, \
+             patch.object(AITradingStrategyAgent, '_watsonx_request') as provider_wx:
             run = build_simulation(config=replace(DEFAULT, llm_enabled=False), days=1)
-        provider.assert_not_called()
+        provider_groq.assert_not_called()
+        provider_wx.assert_not_called()
         self.assertEqual(sum(e['agent'] == 'grid_risk' for e in run.events), 96)
         self.assertTrue(all('disabled' in e['text'] for e in run.events if e['agent'] == 'ai_trading'))
 
     def test_provider_failure_is_visible_and_simulation_finishes(self):
-        with patch.object(AITradingStrategyAgent, '_groq_request', side_effect=TimeoutError('private details')) as provider:
+        # Patch both transports — whichever is active (based on LLM_PROVIDER) should fail.
+        timeout_err = TimeoutError('private details')
+        with patch.object(AITradingStrategyAgent, '_groq_request',
+                          side_effect=timeout_err) as provider_groq, \
+             patch.object(AITradingStrategyAgent, '_watsonx_request',
+                          side_effect=timeout_err) as provider_wx:
             run = build_simulation(config=replace(DEFAULT, llm_enabled=True), days=1)
-        self.assertEqual(provider.call_count, 2)
+        provider_calls = provider_groq.call_count + provider_wx.call_count
+        self.assertEqual(provider_calls, 2)
         self.assertEqual(len(run.blocks), 24)
         failures = [e for e in run.events if e['agent'] == 'ai_trading']
         self.assertTrue(all('previous strategy retained' in e['text'] for e in failures))

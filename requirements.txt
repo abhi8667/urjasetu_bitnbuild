@@ -16,6 +16,12 @@ PyYAML==6.0.2
 fastapi==0.121.2
 uvicorn[standard]==0.41.0
 
-# LLM agents (Groq). The engine runs fully without a key — see engine/algo/llm.py.
+# LLM agents. Supports IBM watsonx.ai (default) and Groq (legacy).
+# The engine runs fully without any key — see engine/algo/llm.py.
 httpx==0.28.1
 python-dotenv==1.2.1
+
+# IBM App Configuration SDK (Sub-Task 3 — live feature flags).
+# Optional: the engine runs without this; missing package is caught in settings.py
+# and all feature-flag reads fall back to environment-variable values.
+ibm-appconfiguration-python-sdk==0.3.9

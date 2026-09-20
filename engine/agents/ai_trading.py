@@ -1,4 +1,9 @@
-"""Groq-backed daily trading strategy agent with a model fallback."""
+"""Daily trading strategy agent. Supports IBM watsonx.ai (default) and Groq (legacy).
+
+The transport layer is injectable (pass `transport=` in tests). The default
+transport auto-selects watsonx.ai when LLM_PROVIDER=watsonx, falling back to
+Groq when LLM_PROVIDER=groq — matching the operator LLM in engine/algo/llm.py.
+"""
 from __future__ import annotations
 
 import json
@@ -16,11 +21,24 @@ GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 class AITradingStrategyAgent:
-    """Lets an LLM tune two safe market parameters once per simulated day."""
+    """Lets an LLM tune two safe market parameters once per simulated day.
+
+    When no `transport` is injected, the default transport is chosen based on
+    the LLM_PROVIDER environment variable:
+      - "watsonx" (default): uses IBM watsonx.ai via engine/algo/llm.py
+      - "groq" (legacy): uses Groq's OpenAI-compatible chat completions API
+    """
 
     def __init__(self, config: Config, transport: Callable | None = None):
         self.config = config
-        self.transport = transport or self._groq_request
+        if transport is not None:
+            self.transport = transport
+        else:
+            from engine import settings as _settings
+            if _settings.LLM_PROVIDER == "groq":
+                self.transport = self._groq_request
+            else:
+                self.transport = self._watsonx_request
         self.last_model: str | None = None
         self.last_error: str | None = None
 
@@ -116,6 +134,27 @@ class AITradingStrategyAgent:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
         return payload["choices"][0]["message"]["content"]
+
+    def _watsonx_request(self, model: str, context: dict, timeout: float) -> str:
+        """IBM watsonx.ai transport for the trading strategy agent.
+
+        The `model` argument is ignored here (model is set by WATSONX_MODEL_ID env
+        var); it is kept in the signature so the transport interface stays uniform
+        and tests can inject watsonx responses without changing the call site.
+        """
+        from engine import settings as _settings
+        from engine.algo import llm as _llm
+        prompt = (
+            "You manage a local peer-to-peer energy market. Return JSON only "
+            "with numeric keys discount and margin. Keep trades attractive to "
+            "households while reducing demand when transformer risk is high.\n\n"
+            f"{json.dumps(context)}"
+        )
+        # Reuse the operator LLM call path (watsonx bearer token, same endpoint).
+        # The system prompt is embedded directly in the prompt string above.
+        raw = _llm._call_llm_watsonx(prompt, timeout,
+                                      system="Return JSON only with keys discount and margin.")
+        return raw
 
 
 def _clamp(value: float, low: float, high: float) -> float:

@@ -4,6 +4,9 @@
 #
 # The UI is NOT here — it deploys to Vercel from UI/ and reaches this service
 # over wss://. Set VITE_ENGINE_URL in Vercel to this service's public URL.
+#
+# NOTE: IBM Cloud Code Engine is the preferred deployment target (Sub-Task 5).
+# This file is retained as a legacy fallback for Render deployments.
 services:
   - type: web
     name: urjasetu-engine
@@ -29,12 +32,46 @@ services:
       # but means any page anywhere can open a socket to this service.
       - key: CORS_ORIGINS
         value: "*"
-      # Set in the dashboard, never in this file — it is committed.
-      - key: GROQ_API_KEY
-        sync: false
+
+      # ---- LLM provider selection ----------------------------------------
+      # "watsonx" = IBM watsonx.ai (default)  |  "groq" = legacy Groq
+      - key: LLM_PROVIDER
+        value: "watsonx"
       - key: URJASETU_LLM_ENABLED
         value: "true"
+
+      # ---- IBM watsonx.ai (Sub-Task 1) ------------------------------------
+      # Set these in the Render dashboard — never commit secrets to this file.
+      - key: WATSONX_API_KEY
+        sync: false
+      - key: WATSONX_PROJECT_ID
+        sync: false
+      - key: WATSONX_MODEL_ID
+        value: "ibm/granite-3-3-8b-instruct"
+      - key: WATSONX_URL
+        value: "https://us-south.ml.cloud.ibm.com"
+
+      # ---- Groq legacy (only used when LLM_PROVIDER=groq) ----------------
+      - key: GROQ_API_KEY
+        sync: false
       - key: GROQ_MODEL
         value: qwen/qwen3.8-27b
       - key: GROQ_FALLBACK_MODEL
         value: openai/gpt-oss-120b
+
+      # ---- IBM App Configuration (Sub-Task 3) ----------------------------
+      - key: APPCONFIGURATION_API_KEY
+        sync: false
+      - key: APPCONFIGURATION_INSTANCE_ID
+        sync: false
+      - key: APPCONFIGURATION_REGION
+        value: "us-south"
+      - key: APPCONFIGURATION_COLLECTION_ID
+        value: "urjasetu-engine"
+      - key: APPCONFIGURATION_ENVIRONMENT_ID
+        value: "production"
+
+      # ---- IBM Cloud Code Engine marker ----------------------------------
+      # Keep false on Render (pinger is needed); set true only on Code Engine.
+      - key: IBM_CODE_ENGINE
+        value: "false"

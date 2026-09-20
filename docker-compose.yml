@@ -11,9 +11,33 @@ services:
       - URJASETU_DAYS=30
       - URJASETU_DERATE=1.0
       - CORS_ORIGINS=*
+
+      # ---- LLM provider selection ----------------------------------------
+      # "watsonx" = IBM watsonx.ai (default)  |  "groq" = legacy Groq
+      - LLM_PROVIDER=${LLM_PROVIDER:-watsonx}
       - URJASETU_LLM_ENABLED=${URJASETU_LLM_ENABLED:-true}
+
+      # ---- IBM watsonx.ai (Sub-Task 1) ------------------------------------
+      - WATSONX_API_KEY=${WATSONX_API_KEY:-}
+      - WATSONX_PROJECT_ID=${WATSONX_PROJECT_ID:-}
+      - WATSONX_MODEL_ID=${WATSONX_MODEL_ID:-ibm/granite-3-3-8b-instruct}
+      - WATSONX_URL=${WATSONX_URL:-https://us-south.ml.cloud.ibm.com}
+
+      # ---- Groq legacy (only used when LLM_PROVIDER=groq) ----------------
       - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - GROQ_MODEL=${GROQ_MODEL:-qwen/qwen3.8-27b}
+
+      # ---- IBM App Configuration (Sub-Task 3) ----------------------------
+      - APPCONFIGURATION_API_KEY=${APPCONFIGURATION_API_KEY:-}
+      - APPCONFIGURATION_INSTANCE_ID=${APPCONFIGURATION_INSTANCE_ID:-}
+      - APPCONFIGURATION_REGION=${APPCONFIGURATION_REGION:-us-south}
+      - APPCONFIGURATION_COLLECTION_ID=${APPCONFIGURATION_COLLECTION_ID:-urjasetu-engine}
+      - APPCONFIGURATION_ENVIRONMENT_ID=${APPCONFIGURATION_ENVIRONMENT_ID:-dev}
+
+      # ---- IBM Cloud Code Engine (Sub-Task 5) ----------------------------
+      # Set to "true" when running inside Code Engine to suppress keep-alive pinger
+      - IBM_CODE_ENGINE=${IBM_CODE_ENGINE:-false}
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 10s

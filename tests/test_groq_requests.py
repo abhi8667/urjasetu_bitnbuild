@@ -48,7 +48,10 @@ class GroqRequestTests(unittest.TestCase):
                 self.assertEqual(body["response_format"], {"type": "json_object"})
 
     def test_operator_request_reserves_reasoning_budget(self):
+        # LLM_PROVIDER must be "groq" so _call_llm routes to _call_llm_groq,
+        # not the watsonx path which uses a different auth/response shape.
         with patch.object(llm, "LLM_ENABLED", True), patch.object(
+                settings, "LLM_PROVIDER", "groq"), patch.object(
                 settings, "GROQ_MODEL", DEFAULT.groq_primary_model), patch("httpx.post") as send:
             send.return_value.json.return_value = {
                 "choices": [{"message": {"content": "answer"}}]}
