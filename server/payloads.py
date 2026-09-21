@@ -343,4 +343,19 @@ def event_text(topic: str, payload: dict) -> str:
         return (f"Daily LLM strategy updated: discount {payload.get('discount', 0):.2f}, "
                 f"margin {payload.get('margin', 0):.2f}, "
                 f"bid aggression {payload.get('bid_aggression', 0):.2f}")
+    if topic == "governance_audit_completed":
+        crits = payload.get("critical", 0)
+        warns = payload.get("warning", 0)
+        days = payload.get("days_audited", 0)
+        total = payload.get("total_incidents", 0)
+        sev = (f"{crits} critical, {warns} warning" if crits or warns
+               else "no critical or warning findings")
+        return (f"Governance audit complete: {total} incident(s) across {days} days — {sev}")
+    if topic == "briefing_ready":
+        days = payload.get("days", 0)
+        mode = payload.get("mode", "template")
+        headline = payload.get("last_headline", "")
+        mode_label = "LLM-enriched" if mode == "llm" else "deterministic template"
+        suffix = f": {headline}" if headline else ""
+        return (f"Ops briefing ready for {days} day(s) ({mode_label}){suffix}")
     return topic.replace("_", " ")

@@ -43,6 +43,7 @@ TRACE_TOPICS = (
     "ageing_applied", "battery_moved", "delivery_shortfall",
     "bill_lines_posted", "strategy_updated", "grid_risk_predicted",
     "ai_strategy_thinking", "ai_strategy_updated", "ai_strategy_status",
+    "governance_audit_completed", "briefing_ready",
 )
 
 #: Which agent each topic belongs to, for the UI's agent-theatre column.
@@ -63,6 +64,8 @@ _AGENT_OF = {
     "ai_strategy_thinking": "ai_trading",
     "ai_strategy_updated": "ai_trading",
     "ai_strategy_status": "ai_trading",
+    "governance_audit_completed": "governance",
+    "briefing_ready": "ops_briefing",
 }
 
 
@@ -207,10 +210,33 @@ def build_simulation(config: Config | None = None, days: int | None = None,
     audit = gov_agent.audit(recorder.blocks, blocks_per_day=config.blocks_per_day)
     governance_dict = audit.as_dict()
 
+    # Publish one summary event so the governance agent appears in the agent stream.
+    # Block 0 is used as the anchor — this is a post-run event, not a live one.
+    total_b = len(recorder.blocks)
+    last_block = recorder.blocks[-1]["block"] if recorder.blocks else 0
+    bus.publish("governance_audit_completed", last_block, "governance", {
+        "total_incidents": governance_dict["summary"]["total_incidents"],
+        "critical": governance_dict["summary"]["critical"],
+        "warning": governance_dict["summary"]["warning"],
+        "info": governance_dict["summary"]["info"],
+        "days_audited": len(governance_dict["days"]),
+        "blocks_audited": total_b,
+    })
+
     # ---- operations briefings (LLM optional, falls back to template) -------
     ops_agent = OpsBriefingAgent()
     briefings = ops_agent.brief_all_days(
         governance_dict, recorder.blocks, blocks_per_day=config.blocks_per_day)
+
+    # Publish one summary event so ops_briefing appears in the agent stream.
+    if briefings:
+        last_b = briefings[-1]
+        bus.publish("briefing_ready", last_block, "ops_briefing", {
+            "days": len(briefings),
+            "mode": last_b.get("mode", "template"),
+            "last_day": last_b.get("day", 0),
+            "last_headline": (last_b.get("what_changed") or "")[:120],
+        })
 
     return SimulationResult(
         scene=payloads.scene_payload(feed, config),

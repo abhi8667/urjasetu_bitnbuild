@@ -5,9 +5,9 @@ import * as THREE from 'three'
 import type { BlockPayload, EventPayload, TransportStatus } from './types'
 import './agent-network.css'
 
-type Family = 'ML' | 'LLM' | 'Logic' | 'System'
+type Family = 'ML' | 'LLM' | 'Logic' | 'System' | 'Governance'
 type Agent = { id: string; name: string; family: Family; position: [number, number, number]; detail: string }
-const colors: Record<Family, string> = { ML: '#50e4ed', LLM: '#bc8aff', Logic: '#ffbd69', System: '#78e3b0' }
+const colors: Record<Family, string> = { ML: '#50e4ed', LLM: '#bc8aff', Logic: '#ffbd69', System: '#78e3b0', Governance: '#a78bfa' }
 const agents: Agent[] = [
   { id: 'market', name: 'Market', family: 'Logic', position: [0, 0, 0], detail: 'Matches local bids and offers, then clears the energy market.' },
   { id: 'grid_risk', name: 'Grid risk', family: 'ML', position: [-5, 3, -1], detail: 'Logistic regression trained on the simulated meter feed predicts transformer overload probability every block and supplies risk scores to the trading AI. These are simulation predictions, not validated field forecasts.' },
@@ -20,11 +20,14 @@ const agents: Agent[] = [
   { id: 'settlement', name: 'Settlement', family: 'Logic', position: [0, -4, 2], detail: 'Posts itemised bills and reconciles the cleared energy trades.' },
   { id: 'runner', name: 'Orchestrator', family: 'System', position: [0, 1, -5], detail: 'Opens simulation blocks and coordinates the agent pipeline.' },
   { id: 'battery', name: 'Battery dispatch', family: 'System', position: [6, -3, -3], detail: 'Reports battery movement in response to grid decisions.' },
+  { id: 'governance', name: 'Governance', family: 'Governance', position: [-4, -5, -2], detail: 'Rule-based compliance agent (GC-01–GC-12). Audits every block for transformer breaches, settlement reconciliation, curtailment concentration, hot-spot violations, and per-household fairness. Fully deterministic — identical input produces identical findings.' },
+  { id: 'ops_briefing', name: 'Ops briefing', family: 'Governance', position: [-6, -3, -3], detail: 'Reads the governance audit and turns it into a plain-language daily briefing for non-technical administrators: what changed, what needs attention, what action is recommended. Template-based by default; LLM-enriched via Groq when configured.' },
 ]
 const routes = [
   ['runner', 'grid_risk'], ['grid_risk', 'ai_trading'], ['ai_trading', 'prosumer'], ['ai_trading', 'consumer'],
   ['prosumer', 'market'], ['consumer', 'market'], ['runner', 'market'], ['market', 'sentinel'],
   ['sentinel', 'flow'], ['flow', 'market'], ['flow', 'battery'], ['flow', 'health'], ['health', 'settlement'], ['market', 'settlement'],
+  ['settlement', 'governance'], ['health', 'governance'], ['sentinel', 'governance'], ['governance', 'ops_briefing'],
 ]
 const agentId = (event: EventPayload) => ({ risk: 'grid_risk', strategy: 'ai_trading', llm: 'ai_trading' }[event.agent] ?? event.agent)
 
@@ -154,7 +157,7 @@ export function AgentNetwork({ events, status, offline, block, synchronized }: {
       </section>
       <aside className="network-panel">
         <div className="network-panel-title"><span>NETWORK EXPLORER</span><span className="network-count">{agents.length} roles</span></div>
-        <div className="network-filters">{(['All', 'ML', 'LLM', 'Logic', 'System'] as const).map(family => <button key={family} aria-pressed={filter === family} onClick={() => { setFilter(family); setSelected(null) }} style={{ '--agent-color': family === 'All' ? '#fff' : colors[family] } as CSSProperties}>{family !== 'All' && <i />}{family}</button>)}</div>
+        <div className="network-filters">{(['All', 'ML', 'LLM', 'Logic', 'System', 'Governance'] as const).map(family => <button key={family} aria-pressed={filter === family} onClick={() => { setFilter(family); setSelected(null) }} style={{ '--agent-color': family === 'All' ? '#fff' : colors[family] } as CSSProperties}>{family !== 'All' && <i />}{family}</button>)}</div>
         <div className="network-agent-list">{visible.map(agent => <button key={agent.id} onClick={() => setSelected(selected === agent.id ? null : agent.id)} aria-pressed={selected === agent.id}><i style={{ background: colors[agent.family] }} /><span>{agent.name}</span><small>{agent.family}</small></button>)}</div>
         {current && <div className="network-detail"><div><strong style={{ color: colors[current.family] }}>{current.name}</strong><button onClick={() => setSelected(null)} aria-label="Clear agent selection">×</button></div><p>{current.detail}</p><small>{events.filter(e => agentId(e) === current.id).length} events in current window</small><p className="network-paths">Sends to: {routes.filter(([from]) => from === current.id).map(([, to]) => agents.find(a => a.id === to)!.name).join(', ') || 'End of workflow'}</p></div>}
         <div className="network-feed-title"><h2>{current ? 'Agent activity' : 'Activity stream'}</h2><span>{filteredEvents.length} recent</span></div>
