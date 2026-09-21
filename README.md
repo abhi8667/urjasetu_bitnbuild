@@ -508,7 +508,8 @@ Throughout the design and engineering of **UrjaSetu**, we utilized **IBM Bob's P
 ## Authors & Acknowledgments
 
 - **Lead Architect & Developer**: [Abhishek](https://github.com/abhi8667)
-- **Contributor**: [IBM Bob](https://github.com/IBM/ibm-bob)
+- **Contributor**: [IBM Bob](https://github.com/IBM/ibm-bob) — AI pair-programmer; co-authored UI components, engine logic, and test suite.
+- **Contributor**: [Tarun Aadhithya](https://github.com/tarun-codes07) — UI development, AgentNetwork visualisation, and integration.
 - **Data & Topological Source**: Real surveyed low-voltage distribution network in Whitefield, Bengaluru (BESCOM 11 kV / 415 V feeder system).
 - **Standards & Methodology**: Thermal calculations follow **IEEE Std C57.91-2011** (Guide for Loading Mineral-Oil-Immersed Transformers).
 
