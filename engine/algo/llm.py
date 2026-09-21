@@ -1,4 +1,4 @@
-"""The three LLM call sites, backed by Groq. Cuttable — the engine must run
+﻿"""The three LLM call sites, backed by Groq. Cuttable â€” the engine must run
 fully without them, and PRD integration check 10 is exactly that claim.
 
 Three things this file used to get wrong:
@@ -8,7 +8,7 @@ Three things this file used to get wrong:
     module global, so the lookup always fell through to the default and setting
     `llm_enabled: true` in config.yaml did nothing at all. Deployment config
     lives in `engine/settings.py` now, read from the environment.
-  * `_call_llm` raised NotImplementedError — there was no backend.
+  * `_call_llm` raised NotImplementedError â€” there was no backend.
   * `_CLAMPS` guessed that the spec's ".margin" meant `bid_aggression`, with an
     OPEN QUESTION comment. `StrategyParams` has a `margin` field. It is `margin`.
 
@@ -17,7 +17,7 @@ strategy numbers, each clamped to a configured range before anything downstream
 sees it, and it may write one line of prose for the trace. It cannot clear a
 market, move a kWh, price a trade, or touch an invariant. If Groq is slow,
 absent, rate-limited, or returns nonsense, every function here returns the
-deterministic answer instead and the run is unaffected — which is why the engine
+deterministic answer instead and the run is unaffected â€” which is why the engine
 can be demonstrated with no key at all.
 """
 from __future__ import annotations
@@ -28,18 +28,20 @@ from engine.domain import Breach, StrategyParams, TransformerState
 from engine import settings
 
 #: Read once at import, from the environment. True only when the feature is
-#: switched on AND a key exists — see engine/settings.py.
+#: switched on AND a key exists â€” see engine/settings.py.
 LLM_ENABLED = settings.LLM_ENABLED
 
 # LM1: the only fields the LLM may move, each with the range it is clamped to.
-# `margin` is a real field on StrategyParams — the previous "best guess" mapping
+# `margin` is a real field on StrategyParams â€” the previous "best guess" mapping
 # onto bid_aggression, with the open question left in a comment, meant the LLM's
 # answer for margin was silently applied to a different parameter.
+# battery_reserve_frac is in _LM1_FROZEN and is skipped before the clamp
+# loop ever reads it. Listing it here was dead code -- a range that was
+# never applied -- and implied the LLM could move it, which LM1 forbids.
 _CLAMPS = {
     "discount": (0.50, 1.00),
     "margin": (0.02, 0.30),
     "bid_aggression": (0.50, 1.50),
-    "battery_reserve_frac": (0.00, 0.60),
 }
 
 #: Fields the LLM is NOT permitted to move, however it answers. Kept as data so
@@ -63,7 +65,7 @@ def _call_llm(prompt: str, timeout: float, system: str = _SYSTEM_PROMPT) -> str:
 
     Every public function below routes through here, so it is the only thing a
     test needs to monkeypatch to simulate a timeout, a malformed response, or a
-    normal reply. It raises on any failure — by design, so that "no backend
+    normal reply. It raises on any failure â€” by design, so that "no backend
     configured" reaches exactly the same fallback path a genuine timeout would,
     and there is no second, untested code path that only runs in production.
     """
@@ -126,7 +128,7 @@ def daily_strategy(weather, price_history, previous: StrategyParams | None = Non
             if name in _LM1_FROZEN or name not in data:
                 continue
             values[name] = _clamp(float(data[name]), lo, hi)
-        # LM1: battery_reserve_frac is never the LLM's to move — it is the lever
+        # LM1: battery_reserve_frac is never the LLM's to move â€” it is the lever
         # that keeps energy available for the evening peak, which is a grid
         # decision, not a trading one.
         return StrategyParams(
@@ -137,7 +139,7 @@ def daily_strategy(weather, price_history, previous: StrategyParams | None = Non
         )
     except Exception:
         # Deliberately broad. Network error, HTTP error, bad JSON, a key that is
-        # not a number — the answer is the same in every case, and it is the
+        # not a number â€” the answer is the same in every case, and it is the
         # answer the engine runs on by default anyway.
         return previous
 
@@ -151,7 +153,7 @@ def _templated_diagnosis(breach: Breach, state: TransformerState) -> str:
 def diagnose(breach: Breach, transformer_state: TransformerState,
              timeout: float | None = None) -> str:
     """One plain line for the operator trace. On any failure, the templated
-    string — which is itself accurate, just less readable."""
+    string â€” which is itself accurate, just less readable."""
     if not LLM_ENABLED:
         return _templated_diagnosis(breach, transformer_state)
     timeout = settings.GROQ_TIMEOUT_SECONDS if timeout is None else timeout
@@ -176,7 +178,7 @@ def diagnose(breach: Breach, transformer_state: TransformerState,
 
 
 def answer(question: str, block_history, timeout: float | None = None) -> str:
-    """Operator Q&A over the recent block history. On failure, 'unavailable' —
+    """Operator Q&A over the recent block history. On failure, 'unavailable' â€”
     never a guess, because a confident wrong answer about the grid is worse than
     no answer."""
     if not LLM_ENABLED:
@@ -212,3 +214,4 @@ def _extract_json(raw: str) -> str:
             text = text[4:]
     start, end = text.find("{"), text.rfind("}")
     return text[start:end + 1] if start != -1 and end > start else text
+
