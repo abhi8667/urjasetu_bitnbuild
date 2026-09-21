@@ -441,6 +441,24 @@
   width: min(580px, calc(100vw - 40px));
 }
 
+.cinematic-dialog-dock.dock-placement-left-middle {
+  top: 50%;
+  left: calc(var(--activity-width, 300px) + 28px);
+  right: auto;
+  bottom: auto;
+  transform: translateY(-50%);
+  width: min(440px, calc(100vw - var(--activity-width, 300px) - 56px));
+}
+
+.cinematic-dialog-dock.dock-placement-top-center {
+  top: 72px;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 40px));
+}
+
 .cinematic-dialog-dock.dock-placement-bottom-right {
   bottom: 24px;
   right: 24px;
@@ -698,13 +716,7 @@ body:has(.window-governance-panel) .cinematic-dialog-dock.dock-placement-bottom-
   font-family: inherit;
 }
 
-/* Dim left Agent Activity stream during demo pitch */
-body:has(.cinematic-dialog-dock) .floating-window.window-agent-stream {
-  opacity: 0.25;
-  filter: grayscale(40%);
-  pointer-events: none;
-  transition: opacity 0.3s ease, filter 0.3s ease;
-}
+
 
 /* 6. Spotlight Highlight Effects */
 .tour-spotlight-backdrop {

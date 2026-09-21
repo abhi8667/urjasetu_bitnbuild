@@ -4,7 +4,13 @@ import { UrjaMascot, type MascotEmote } from './UrjaMascot'
 import { SplashScreen } from './SplashScreen'
 import type { CameraMode } from './City3D'
 
-export type TourDockPlacement = 'bottom-center' | 'top-under-hud' | 'bottom-right' | 'bottom-left'
+export type TourDockPlacement =
+  | 'bottom-center'
+  | 'top-under-hud'
+  | 'bottom-right'
+  | 'bottom-left'
+  | 'left-middle'
+  | 'top-center'
 
 export interface TourSceneConfig {
   step: number
@@ -33,7 +39,7 @@ const TOUR_SCENES: Record<number, TourSceneConfig> = {
     cameraMode: 'orbit',
     detailPanel: null,
     showTelemetryGraph: false,
-    placement: 'bottom-center',
+    placement: 'left-middle',
   },
   2: {
     step: 2,
@@ -62,7 +68,7 @@ const TOUR_SCENES: Record<number, TourSceneConfig> = {
     ],
     detailPanel: 'agents',
     showTelemetryGraph: false,
-    placement: 'bottom-right',
+    placement: 'top-center',
   },
   4: {
     step: 4,
