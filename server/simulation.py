@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from engine.agents.settlement import SettlementAgent
 from engine.agents.ai_trading import AITradingStrategyAgent
 from engine.agents.grid_risk import GridFailureRiskAgent
+from engine.agents.governance import GovernanceAgent
+from engine.agents.ops_briefing import OpsBriefingAgent
 from engine import settings
 from engine.bus import Bus
 from engine.config import Config, load_config
@@ -75,6 +77,10 @@ class SimulationResult:
     config: Config
     built_in_seconds: float = 0.0
     warnings: list[str] = field(default_factory=list)
+    # Governance & Compliance audit (populated post-run)
+    governance: dict = field(default_factory=dict)
+    # Operations briefings, one per simulated day (populated post-run)
+    briefings: list[dict] = field(default_factory=list)
 
 
 class _Recorder:
@@ -196,6 +202,16 @@ def build_simulation(config: Config | None = None, days: int | None = None,
             f"CN2 cap trimmed Rs{run_summary['ageing_adder_trimmed_inr']:.2f} of "
             f"ageing adder to keep buyers' all-in cost at or below retail.")
 
+    # ---- governance & compliance audit (deterministic, post-run) -----------
+    gov_agent = GovernanceAgent()
+    audit = gov_agent.audit(recorder.blocks, blocks_per_day=config.blocks_per_day)
+    governance_dict = audit.as_dict()
+
+    # ---- operations briefings (LLM optional, falls back to template) -------
+    ops_agent = OpsBriefingAgent()
+    briefings = ops_agent.brief_all_days(
+        governance_dict, recorder.blocks, blocks_per_day=config.blocks_per_day)
+
     return SimulationResult(
         scene=payloads.scene_payload(feed, config),
         blocks=recorder.blocks,
@@ -206,6 +222,8 @@ def build_simulation(config: Config | None = None, days: int | None = None,
         config=config,
         built_in_seconds=round(time.perf_counter() - started, 3),
         warnings=warnings,
+        governance=governance_dict,
+        briefings=briefings,
     )
 
 

@@ -6,6 +6,7 @@ import { createDemoRun } from './demoFixture'
 import { DemoTransport, EngineTransport, ReplayTransport } from './transport'
 import { HAS_CONFIGURED_ENGINE } from './config'
 import { TelemetryGraph } from './TelemetryGraph'
+import { GovernancePanel } from './GovernancePanel'
 import type { BlockPayload, EventPayload, RunSummary, ScenePayload, Transport, TransportStatus } from './types'
 
 const money = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
@@ -258,10 +259,11 @@ function CityApp() {
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
 
   // Floating Window toggles (Matches Image 1 buttons & Image 2 multi-windows)
-  const [detailPanel, setDetailPanel] = useState<'health' | 'ledger' | 'node' | null>(null)
+  const [detailPanel, setDetailPanel] = useState<'health' | 'ledger' | 'node' | 'governance' | null>(null)
   const showTransformerHealth = detailPanel === 'health'
   const showDiscomLedger = detailPanel === 'ledger'
   const showNodeInspector = detailPanel === 'node'
+  const showGovernance = detailPanel === 'governance'
   const [isNightMode, setIsNightMode] = useState(true)
   const [showTelemetryGraph, setShowTelemetryGraph] = useState(false)
   const [custodyHighlight, setCustodyHighlight] = useState<{ from: string; to: string; kwh: number } | null>(null)
@@ -590,6 +592,19 @@ function CityApp() {
               <line x1="12" y1="22.08" x2="12" y2="12" />
             </svg>
             <span>Node Inspector</span>
+            <span className="arrow-external">↗</span>
+          </button>
+
+          <button
+            className={`nav-pill-btn ${showGovernance ? 'pill-active' : ''}`}
+            onClick={() => setDetailPanel(current => current === 'governance' ? null : 'governance')}
+            aria-pressed={detailPanel === 'governance'}
+          >
+            <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+            <span>Governance</span>
             <span className="arrow-external">↗</span>
           </button>
         </nav>
@@ -1295,6 +1310,13 @@ function CityApp() {
             )}
           </div>
         </div>
+      )}
+
+      {/* 11. Governance & Compliance Panel */}
+      {showGovernance && (
+        <GovernancePanel
+          onClose={() => setDetailPanel(null)}
+        />
       )}
 
       {/* 10. Real-Time Telemetry & Load Dynamics Graph */}

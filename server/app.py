@@ -170,6 +170,66 @@ async def replay(days: int = Query(1, ge=1, le=30),
             "events": sim.events, "summary": sim.summary}
 
 
+@app.get("/api/governance")
+async def governance(days: int | None = None, derate: float | None = None) -> dict:
+    """Full Governance & Compliance audit trail for the run.
+
+    Returns the complete rule-based findings: every incident with its rule,
+    severity, block, and numeric detail; per-day summaries; and cross-day
+    fairness aggregates (P2P energy received, curtailment concentration,
+    above-average charge days).
+
+    The result is deterministic — identical input produces identical output —
+    so committee members can re-run and verify any finding independently.
+    """
+    sim = await asyncio.to_thread(_sim, days, derate)
+    return sim.governance
+
+
+@app.get("/api/governance/day/{day}")
+async def governance_day(day: int, days: int | None = None,
+                         derate: float | None = None) -> dict:
+    """Governance findings for one simulated day (0-indexed).
+
+    Returns the day summary and all incidents for that day. Useful for the UI
+    to load one day at a time without pulling the full 30-day audit payload.
+    """
+    sim = await asyncio.to_thread(_sim, days, derate)
+    day_list: list[dict] = sim.governance.get("days", [])
+    match = next((d for d in day_list if d.get("day") == day), None)
+    if match is None:
+        raise HTTPException(404, f"day {day} not found in governance audit")
+    # Attach incident detail for that day
+    incidents = [i for i in sim.governance.get("incidents", [])
+                 if i.get("day") == day]
+    return {**match, "incidents_detail": incidents}
+
+
+@app.get("/api/briefings")
+async def briefings(days: int | None = None, derate: float | None = None) -> dict:
+    """Operations briefings — one plain-language summary per simulated day.
+
+    Each entry answers: what changed, what needs attention, what is recommended.
+    Produced by a deterministic template that is optionally enriched by the LLM
+    (Groq) when the server has a valid API key. The `mode` field in each entry
+    is "llm" or "template" so the UI can indicate which path was used.
+    """
+    sim = await asyncio.to_thread(_sim, days, derate)
+    return {"briefings": sim.briefings, "count": len(sim.briefings),
+            "llm_enabled": sim.config.llm_enabled}
+
+
+@app.get("/api/briefings/day/{day}")
+async def briefing_day(day: int, days: int | None = None,
+                       derate: float | None = None) -> dict:
+    """Operations briefing for one simulated day (0-indexed)."""
+    sim = await asyncio.to_thread(_sim, days, derate)
+    match = next((b for b in sim.briefings if b.get("day") == day), None)
+    if match is None:
+        raise HTTPException(404, f"briefing for day {day} not found")
+    return match
+
+
 @app.post("/api/ask")
 async def ask(payload: dict) -> dict:
     """Operator Q&A over the recent trace, through the Groq-backed LLM agent.
@@ -195,7 +255,9 @@ async def root() -> JSONResponse:
         "websocket": "/ws",
         "rest": ["/api/health", "/api/scene", "/api/summary", "/api/run-summary",
                  "/api/blocks", "/api/block/{block}", "/api/events",
-                 "/api/replay", "/api/ask"],
+                 "/api/replay", "/api/ask",
+                 "/api/governance", "/api/governance/day/{day}",
+                 "/api/briefings", "/api/briefings/day/{day}"],
         "docs": "/docs",
     })
 
