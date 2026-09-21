@@ -50,7 +50,7 @@
 
 .network-layout {
   display:grid;
-  grid-template-columns:minmax(0,1fr) 350px;
+  grid-template-columns:minmax(0,1fr) 390px;
   height:calc(100dvh - 76px);
 }
 
@@ -58,6 +58,20 @@
   position:relative;
   min-height:580px;
   overflow:hidden;
+  background:
+    radial-gradient(circle at 54% 48%, #18304a42 0, transparent 33%),
+    linear-gradient(120deg, #0b1320 0%, #070b13 58%);
+}
+
+.network-stage::before {
+  content:'';
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  opacity:.26;
+  background-image:linear-gradient(#86a8c50b 1px, transparent 1px),linear-gradient(90deg, #86a8c50b 1px, transparent 1px);
+  background-size:56px 56px;
+  mask-image:linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);
 }
 
 .network-heading {
@@ -91,6 +105,28 @@
   font-size:12px;
   color:#76869f;
 }
+
+.network-stage-summary {
+  position:absolute;
+  top:34px;
+  right:30px;
+  z-index:2;
+  display:flex;
+  gap:8px;
+  pointer-events:none;
+}
+
+.network-stage-summary span {
+  padding:7px 9px;
+  border:1px solid #ffffff12;
+  border-radius:7px;
+  background:#0d1522c9;
+  color:#7588a4;
+  font-size:9px;
+  letter-spacing:.7px;
+}
+
+.network-stage-summary b { color:#d9e7fb; font-weight:600; }
 
 .network-tools {
   position:absolute;
@@ -135,7 +171,7 @@
 .network-panel {
   border-left:1px solid #ffffff12;
   background:linear-gradient(160deg,#101724,#0b101a);
-  padding:24px 22px;
+  padding:25px 22px 20px;
   display:flex;
   flex-direction:column;
   overflow:auto;
@@ -162,7 +198,8 @@
 .network-filters {
   display:flex;
   gap:5px;
-  margin:20px 0 15px;
+  flex-wrap:wrap;
+  margin:18px 0;
 }
 
 .network-filters button {
@@ -171,7 +208,7 @@
   align-items:center;
   font-size:10px;
   color:#8594ab;
-  padding:8px;
+  padding:7px 8px;
   border:1px solid transparent;
   border-radius:6px;
 }
@@ -193,8 +230,8 @@
 .network-agent-list {
   display:grid;
   grid-template-columns:1fr 1fr;
-  gap:5px;
-  margin-bottom:19px;
+  gap:8px;
+  margin-bottom:22px;
 }
 
 .network-agent-list button {
@@ -202,15 +239,16 @@
   align-items:center;
   gap:6px;
   text-align:left;
-  padding:9px 7px;
-  border:1px solid #ffffff08;
-  border-radius:6px;
+  padding:10px 9px;
+  border:1px solid #ffffff0d;
+  border-radius:8px;
+  background:#ffffff025;
   min-width:0;
 }
 
 .network-agent-list button:hover,.network-agent-list button[aria-pressed=true] {
-  background:#ffffff08;
-  border-color:#ffffff28;
+  background:#ffffff0b;
+  border-color:#ffffff35;
 }
 
 .network-agent-list span {
@@ -228,8 +266,9 @@
   border:1px solid #ffffff15;
   border-radius:9px;
   background:#ffffff03;
-  padding:13px;
-  margin-bottom:20px;
+  padding:14px;
+  margin-bottom:22px;
+  box-shadow:inset 0 1px #ffffff08;
 }
 
 .network-detail>div {
@@ -292,13 +331,15 @@
 
 .network-feed article {
   border-left:2px solid var(--agent-color);
-  padding:0 0 0 12px;
-  margin:0 0 19px;
+  padding:10px 11px 10px 13px;
+  margin:0 0 10px;
+  border-radius:0 8px 8px 0;
+  background:#ffffff025;
 }
 
 .network-feed article.is-thinking {
   border-color: #bc8aff66;
-  background: linear-gradient(135deg, #bc8aff14, transparent);
+  background: linear-gradient(135deg, #bc8aff14, #ffffff025);
 }
 
 .network-feed .reasoning-details { margin: 8px 0; }
@@ -352,11 +393,13 @@
 .bubble-label {
   white-space:nowrap;
   text-align:center;
-  background:#0a101ad9;
-  padding:6px 10px;
-  border-radius:6px;
-  border:1px solid #ffffff0a;
-  transition:background .2s;
+  min-width:82px;
+  background:#09111de8;
+  padding:7px 11px;
+  border-radius:8px;
+  border:1px solid #ffffff12;
+  box-shadow:0 8px 22px #0006;
+  transition:background .2s,border-color .2s,transform .2s;
 }
 
 .bubble-label span {
@@ -377,6 +420,7 @@
 .bubble-label.selected {
   border-color:var(--agent-color);
   background:#172134;
+  transform:translateY(-2px);
 }
 
 .agent-network button:focus-visible,.agent-network a:focus-visible {
@@ -396,7 +440,7 @@
 
 @media(min-width:1500px) {
   .network-layout {
-    grid-template-columns:minmax(0,1fr) 390px;
+    grid-template-columns:minmax(0,1fr) 420px;
   }
   .network-agent-list span {
     font-size:11px;
@@ -417,6 +461,7 @@
   .network-heading h1 {
     font-size:28px;
   }
+  .network-stage-summary { right:20px; }
   .network-stage-footer {
     flex-direction:column;
     font-size:7px;

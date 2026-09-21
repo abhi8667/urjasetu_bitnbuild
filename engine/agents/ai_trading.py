@@ -61,9 +61,11 @@ class AITradingStrategyAgent:
                     raw = response
                     reasoning = None
                 decision = json.loads(raw) if isinstance(raw, str) else raw
+                if not isinstance(decision, dict):
+                    raise ValueError("strategy response must be a JSON object")
                 strategy = StrategyParams(
-                    discount=_clamp(float(decision["discount"]), 0.50, 1.00),
-                    margin=_clamp(float(decision["margin"]), 0.00, 0.35),
+                    discount=_clamp(_finite_json_number(decision["discount"]), 0.50, 1.00),
+                    margin=_clamp(_finite_json_number(decision["margin"]), 0.00, 0.35),
                     battery_reserve_frac=previous.battery_reserve_frac,
                     bid_aggression=previous.bid_aggression,
                 )
@@ -149,6 +151,22 @@ def _clamp(value: float, low: float, high: float) -> float:
     if not math.isfinite(value):
         raise ValueError("Strategy values must be finite")
     return max(low, min(high, value))
+
+
+def _finite_json_number(value: object) -> float:
+    """Accept JSON numbers, but not coercible text or JSON booleans.
+
+    ``bool`` is a subclass of ``int`` in Python, so ``float(True)`` would
+    otherwise turn an LLM's malformed ``true`` into a valid market parameter.
+    Keeping this boundary strict makes malformed provider output fall back to
+    the previous safe strategy instead of silently changing one.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("strategy values must be JSON numbers")
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("strategy values must be finite")
+    return number
 
 
 def _display_reasoning(reasoning: object, limit: int = 1200) -> str | None:

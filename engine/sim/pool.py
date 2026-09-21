@@ -94,8 +94,6 @@ class AgentPool:
 
     def on_settled(self, block: int, ticks: list[MeterTick], trades: list[Trade],
                    clearing_price: float | None, bill_lines: list[BillLine]) -> None:
-        if clearing_price is not None:
-            self.price_history.append(clearing_price)
         by_house = {t.house_id: t for t in ticks}
         for house_id, prosumer in self.prosumers.items():
             prosumer.on_settled(block, [by_house[house_id]], trades, clearing_price)

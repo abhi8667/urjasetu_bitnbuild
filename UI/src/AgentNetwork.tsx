@@ -10,18 +10,18 @@ type Agent = { id: string; name: string; family: Family; position: [number, numb
 const colors: Record<Family, string> = { ML: '#50e4ed', LLM: '#bc8aff', Logic: '#ffbd69', System: '#78e3b0', Governance: '#a78bfa' }
 const agents: Agent[] = [
   { id: 'market', name: 'Market', family: 'Logic', position: [0, 0, 0], detail: 'Matches local bids and offers, then clears the energy market.' },
-  { id: 'grid_risk', name: 'Grid risk', family: 'ML', position: [-5, 3, -1], detail: 'Logistic regression trained on the simulated meter feed predicts transformer overload probability every block and supplies risk scores to the trading AI. These are simulation predictions, not validated field forecasts.' },
-  { id: 'ai_trading', name: 'Trading strategy', family: 'LLM', position: [-1, 4, 0], detail: 'Groq strategy advisor receives ML risk scores and market conditions once per simulated day. Its bounded decision reaches every trader. The stream reports new decisions, reuse, disabled configuration, and fallback.' },
-  { id: 'prosumer', name: 'Prosumers', family: 'Logic', position: [-5, 0, 2], detail: 'Agent pool offering surplus rooftop solar and battery energy.' },
-  { id: 'consumer', name: 'Consumers', family: 'Logic', position: [-3, -3, 1], detail: 'Agent pool submitting energy bids within household spend caps.' },
-  { id: 'sentinel', name: 'Grid sentinel', family: 'Logic', position: [4, 2, -1], detail: 'Checks transformer constraints and detects predicted or actual breaches.' },
-  { id: 'flow', name: 'Power flow', family: 'Logic', position: [5, -1, 1], detail: 'Reshapes trades and coordinates batteries to keep the grid within limits.' },
-  { id: 'health', name: 'Asset health', family: 'Logic', position: [3, -4, -1], detail: 'Tracks transformer thermal ageing and insulation life.' },
-  { id: 'settlement', name: 'Settlement', family: 'Logic', position: [0, -4, 2], detail: 'Posts itemised bills and reconciles the cleared energy trades.' },
-  { id: 'runner', name: 'Orchestrator', family: 'System', position: [0, 1, -5], detail: 'Opens simulation blocks and coordinates the agent pipeline.' },
-  { id: 'battery', name: 'Battery dispatch', family: 'System', position: [6, -3, -3], detail: 'Reports battery movement in response to grid decisions.' },
-  { id: 'governance', name: 'Governance', family: 'Governance', position: [-4, -5, -2], detail: 'Rule-based compliance agent (GC-01–GC-12). Audits every block for transformer breaches, settlement reconciliation, curtailment concentration, hot-spot violations, and per-household fairness. Fully deterministic — identical input produces identical findings.' },
-  { id: 'ops_briefing', name: 'Ops briefing', family: 'Governance', position: [-6, -3, -3], detail: 'Reads the governance audit and turns it into a plain-language daily briefing for non-technical administrators: what changed, what needs attention, what action is recommended. Template-based by default; LLM-enriched via Groq when configured.' },
+  { id: 'grid_risk', name: 'Grid risk', family: 'ML', position: [-7.5, 4.3, -1], detail: 'Logistic regression trained on the simulated meter feed predicts transformer overload probability every block and supplies risk scores to the trading AI. These are simulation predictions, not validated field forecasts.' },
+  { id: 'ai_trading', name: 'Trading strategy', family: 'LLM', position: [-2.7, 5.6, 0], detail: 'Groq strategy advisor receives ML risk scores and market conditions once per simulated day. Its bounded decision reaches every trader. The stream reports new decisions, reuse, disabled configuration, and fallback.' },
+  { id: 'prosumer', name: 'Prosumers', family: 'Logic', position: [-8.8, .2, 2], detail: 'Agent pool offering surplus rooftop solar and battery energy.' },
+  { id: 'consumer', name: 'Consumers', family: 'Logic', position: [-5.2, -4.5, 1], detail: 'Agent pool submitting energy bids within household spend caps.' },
+  { id: 'sentinel', name: 'Grid sentinel', family: 'Logic', position: [6.8, 4.1, -1], detail: 'Checks transformer constraints and detects predicted or actual breaches.' },
+  { id: 'flow', name: 'Power flow', family: 'Logic', position: [8.3, -.4, 1], detail: 'Reshapes trades and coordinates batteries to keep the grid within limits.' },
+  { id: 'health', name: 'Asset health', family: 'Logic', position: [4.2, -5.4, -1], detail: 'Tracks transformer thermal ageing and insulation life.' },
+  { id: 'settlement', name: 'Settlement', family: 'Logic', position: [-.2, -6.4, 2], detail: 'Posts itemised bills and reconciles the cleared energy trades.' },
+  { id: 'runner', name: 'Orchestrator', family: 'System', position: [.4, 1.8, -6.5], detail: 'Opens simulation blocks and coordinates the agent pipeline.' },
+  { id: 'battery', name: 'Battery dispatch', family: 'System', position: [9.2, -4.4, -3], detail: 'Reports battery movement in response to grid decisions.' },
+  { id: 'governance', name: 'Governance', family: 'Governance', position: [-6.7, -6.5, -2], detail: 'Rule-based compliance agent (GC-01–GC-12). Audits every block for transformer breaches, settlement reconciliation, curtailment concentration, hot-spot violations, and per-household fairness. Fully deterministic — identical input produces identical findings.' },
+  { id: 'ops_briefing', name: 'Ops briefing', family: 'Governance', position: [-10.2, -3.5, -3], detail: 'Reads the governance audit and turns it into a plain-language daily briefing for non-technical administrators: what changed, what needs attention, what action is recommended. Template-based by default; LLM-enriched via Groq when configured.' },
 ]
 const routes = [
   ['runner', 'grid_risk'], ['grid_risk', 'ai_trading'], ['ai_trading', 'prosumer'], ['ai_trading', 'consumer'],
@@ -138,8 +138,8 @@ export function AgentNetwork({ events, status, offline, block, synchronized }: {
     <div className="network-layout">
       <section className="network-stage" aria-label="Interactive 3D agent communication network">
         <div className="network-heading"><span className="network-eyebrow">A COLLECTIVE INTELLIGENCE</span><h1>Every agent.<br /><em>One connected grid.</em></h1><p>{synchronized && block ? `Day ${block.day} | ${block.clock} | Block ${block.block} | ${block.trades.length} trades` : 'Open Agent Stream from the city tab to connect. Keep that tab open.'}</p></div>
-        <SceneBoundary><Canvas key={reset} camera={{ position: [0, 1, 21], fov: 48 }} dpr={[1, 1.5]} onPointerMissed={() => setSelected(null)} fallback={<div className="network-fallback">WebGL unavailable. Use the agent panel to explore activity.</div>}>
-          <color attach="background" args={['#070b13']} />
+        <div className="network-stage-summary"><span><b>{agents.length}</b> agent roles</span><span><b>{routes.length}</b> workflow paths</span></div>
+        <SceneBoundary><Canvas key={reset} gl={{ alpha: true }} camera={{ position: [0, 0, 26], fov: 44 }} dpr={[1, 1.5]} onPointerMissed={() => setSelected(null)} fallback={<div className="network-fallback">WebGL unavailable. Use the agent panel to explore activity.</div>}>
           <ambientLight intensity={1.2} /><pointLight position={[0, 6, 8]} intensity={65} color="#b9d9ff" />
           <Stars radius={65} depth={35} count={1100} factor={2} saturation={0} fade speed={paused ? 0 : .3} />
           <group position={[0, -.4, 0]}>
@@ -150,7 +150,7 @@ export function AgentNetwork({ events, status, offline, block, synchronized }: {
             })}
             {agents.map(agent => <Bubble key={agent.id} agent={agent} selected={selected === agent.id} active={synchronized && active.has(agent.id)} onSelect={() => { setSelected(agent.id); setFilter('All') }} paused={paused} />)}
           </group>
-          <OrbitControls makeDefault enablePan={false} minDistance={12} maxDistance={35} autoRotate={rotate && !paused} autoRotateSpeed={.35} />
+          <OrbitControls makeDefault enablePan={false} minDistance={16} maxDistance={38} autoRotate={rotate && !paused} autoRotateSpeed={.35} />
         </Canvas></SceneBoundary>
         <div className="network-tools"><button onClick={() => setPaused(!paused)} aria-pressed={paused}>{paused ? '▶ Resume motion' : 'Ⅱ Pause motion'}</button><button onClick={() => setRotate(!rotate)} aria-pressed={rotate}>Orbit {rotate ? 'on' : 'off'}</button><button onClick={() => setReset(reset + 1)}>Reset view</button></div>
         <div className="network-stage-footer"><span>DRAG TO ORBIT · SCROLL TO ZOOM · SELECT A BUBBLE</span><span>Particles follow outgoing workflow paths →</span></div>

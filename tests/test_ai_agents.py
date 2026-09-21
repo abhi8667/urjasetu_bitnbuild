@@ -106,6 +106,20 @@ def test_groq_double_failure_is_safe():
     check("both Groq failures preserve the previous strategy", new == old)
 
 
+def test_groq_rejects_non_numeric_json_values():
+    """JSON booleans and strings are not acceptable strategy numbers."""
+    config = replace(DEFAULT, llm_enabled=True)
+    old = StrategyParams(discount=0.81, margin=0.09)
+    for label, response in (
+        ("boolean", '{"discount": true, "margin": 0.12}'),
+        ("string", '{"discount": "0.75", "margin": 0.12}'),
+        ("array", '[]'),
+    ):
+        agent = AITradingStrategyAgent(config, transport=lambda *_: response)
+        new = agent.decide({}, [], [], old)
+        check(f"Groq {label} JSON preserves the previous strategy", new == old)
+
+
 def test_agents_are_connected_to_runner_and_each_other():
     config = replace(DEFAULT, llm_enabled=True, risk_training_days=7)
     feed = WhitefieldFeed(config)
@@ -134,6 +148,52 @@ def test_agents_are_connected_to_runner_and_each_other():
                                   list(pool.consumers.values())))
     check("connected simulation still trades and settles",
           summary["trades"] > 0 and len(settle.ledger) > 0,
+          f"{summary['trades']} trades")
+
+
+def test_month_long_adversarial_strategy_responses_stay_bounded():
+    """Exercise every daily AI decision across a real 30-day grid run.
+
+    The substitute provider alternates extreme-but-valid values, malformed
+    JSON booleans, and normal values.  The market, physical protection, and
+    settlement layers must finish all 720 blocks regardless.
+    """
+    config = replace(DEFAULT, llm_enabled=True, risk_training_days=14)
+    feed = WhitefieldFeed(config)
+    risk = GridFailureRiskAgent(feed.transformers(), feed.houses(), config).fit(feed)
+    calls, updates = [], []
+
+    def provider(model, prompt, timeout):
+        calls.append((model, prompt))
+        day = prompt["weather"]["day"]
+        if day % 3 == 0:
+            return '{"discount": -999, "margin": 999}'
+        if day % 3 == 1:
+            return '{"discount": true, "margin": 0.12}'
+        return '{"discount": 0.78, "margin": 0.11}'
+
+    strategy = AITradingStrategyAgent(config, transport=provider)
+    pool = AgentPool(feed.houses(), config, strategy_agent=strategy)
+    settle = SettlementAgent(feed.houses(), config, consumers=pool.consumers, feed=feed)
+    bus = Bus(ring_size=5000)
+    bus.subscribe("ai_strategy_updated", lambda event: updates.append(event))
+    summary = Runner(feed, pool, config, bus=bus, settlement=settle,
+                     risk_agent=risk, include_baseline=False).run(blocks=720)
+
+    check("30-day adversarial AI run completes", summary["blocks"] == 720)
+    check("AI is invoked once per day, with fallback only for malformed days",
+          len(calls) == 40 and len(updates) == 30,
+          f"{len(calls)} provider calls, {len(updates)} daily updates")
+    check("every AI prompt is grounded in all transformer risk predictions",
+          all(len(prompt["grid_risk"]) == len(feed.transformers())
+              for _, prompt in calls))
+    check("all strategy values remain within guard rails",
+          0.50 <= pool.strategy.discount <= 1.00 and
+          0.00 <= pool.strategy.margin <= 0.35 and
+          pool.strategy.battery_reserve_frac == StrategyParams().battery_reserve_frac)
+    check("month-long AI orchestration still trades and reconciles settlement",
+          summary["trades"] > 0 and
+          abs(sum(line.net_inr for line in settle.ledger) - settle.charges_collected) < 1e-6,
           f"{summary['trades']} trades")
 
 
