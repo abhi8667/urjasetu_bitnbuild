@@ -802,6 +802,7 @@ a:focus-visible {
   max-height: 380px;
   min-height: 260px;
   overflow-y: auto;
+  scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
   display: flex;
@@ -1251,14 +1252,18 @@ a:focus-visible {
 /* Docked operations layout: activity / city / one selected detail panel. */
 .urjasetu-app { --activity-width: 300px; --detail-width: 400px; }
 .urja-header { gap: 16px; padding: 0 20px; }
-.header-nav-pills { gap: 8px; }
+.brand-group, .live-status-pill, .telemetry-toggle-btn { flex-shrink: 0; }
+.header-nav-pills { gap: 8px; min-width: 0; }
+.header-right-group { min-width: 0; flex-shrink: 1; }
+.demo-dropdown-container { min-width: 0; flex: 1 1 220px; }
+.demo-scenario-select { width: min(320px, 22vw); min-width: 180px; }
 .nav-pill-btn { padding: 9px 12px; white-space: nowrap; }
 .sub-status-bar { top: 84px; left: 20px; right: 20px; transform: none; width: auto; justify-content: center; border-radius: 10px; }
 .hud-top-left { top: 124px; left: 20px; right: 240px; height: 92px; justify-content: space-around; padding: 12px 20px; }
 .hud-top-right { top: 124px; right: 20px; width: 200px; height: 92px; padding: 12px 16px; }
-.city-canvas-container { top: 230px; left: calc(var(--activity-width) + 32px); right: 16px; bottom: 100px; width: auto; height: auto; border-radius: 16px; overflow: hidden; }
+.city-canvas-container { top: 230px; left: calc(var(--activity-width) + 32px); right: 16px; bottom: 16px; width: auto; height: auto; border-radius: 16px; overflow: hidden; }
 .has-detail-panel .city-canvas-container { right: calc(var(--detail-width) + 32px); }
-.floating-window.window-agent-stream { top: 230px; bottom: 100px; left: 20px; width: var(--activity-width); max-height: none; display: flex; flex-direction: column; box-shadow: 0 12px 30px #0003; }
+.floating-window.window-agent-stream { top: 230px; bottom: 120px; left: 20px; width: var(--activity-width); max-height: none; display: flex; flex-direction: column; box-shadow: 0 12px 30px #0003; }
 .window-agent-stream .stream-log-body { flex: 1; min-height: 0; max-height: none; padding: 16px; gap: 16px; }
 .window-agent-stream .window-header, .window-agent-stream .window-footer { flex-shrink: 0; }
 .stream-log-entry { font-size: 11px; gap: 7px; }
@@ -1272,10 +1277,21 @@ a:focus-visible {
 .discom-top-stats { grid-template-columns: 1fr; }
 .comp-row { font-size: 10px; gap: 8px; }
 .gauges-flex-row { flex-wrap: wrap; gap: 12px; }
-.hud-bottom-left { left: calc(var(--activity-width) + 32px); bottom: 16px; padding: 10px 14px; }
+.hud-bottom-left { left: 20px; bottom: 16px; width: var(--activity-width); padding: 10px 12px; }
+.hud-bottom-left .camera-btn-group { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; width: 100%; }
+.hud-bottom-left .cam-view-btn { justify-content: center; min-width: 0; padding: 7px 4px; font-size: 10px; }
+.hud-bottom-left .cam-icon { display: none; }
+.hud-bottom-left .camera-help-text { line-height: 1.45; text-align: center; }
 .hud-bottom-right { display: none; }
-@media (max-width: 1400px) {
+@media (max-width: 2100px) {
   .brand-sub { display: none; }
+  .header-nav-pills { gap: 4px; }
+  .header-nav-pills .pill-icon { display: none; }
+  .nav-pill-btn { padding-inline: 9px; font-size: 11px; }
+  .demo-scenario-select { width: min(280px, 20vw); }
+  .header-right-group { gap: 8px; }
+}
+@media (max-width: 1400px) {
   .urjasetu-app { --activity-width: 260px; --detail-width: 350px; }
   .quick-action-btn { padding: 7px; font-size: 10px; }
   .header-nav-pills { gap: 4px; }
@@ -1306,12 +1322,15 @@ a:focus-visible {
     position: relative; inset: auto; width: 100%; max-width: none; transform: none; flex-shrink: 0;
   }
   .urja-header { order: -6; padding: 8px; height: auto; min-height: 110px; }
+  .header-right-group { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
+  .demo-dropdown-container, .demo-scenario-select { width: 100%; min-width: 0; }
+  .telemetry-toggle-btn span:not(.telemetry-chart-icon), .telemetry-toggle-btn kbd { display: none; }
   .sub-status-bar { order: -5; flex-wrap: wrap; }
   .hud-top-left { order: -4; height: auto; flex-wrap: wrap; gap: 10px; }
   .hud-top-right { display: none; }
   .city-canvas-container { order: -3; height: 420px; }
-  .hud-bottom-left { order: -2; }
-  .floating-window.window-agent-stream { order: -1; height: 340px; }
+  .floating-window.window-agent-stream { order: -2; height: 340px; }
+  .hud-bottom-left { order: -1; }
   .floating-window.window-transformer-ledger, .floating-window.window-discom-ledger,
   .floating-window.window-node-inspector { height: 460px; }
   .header-nav-pills { overflow-x: auto; justify-content: flex-start; }

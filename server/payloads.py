@@ -328,7 +328,11 @@ def event_text(topic: str, payload: dict) -> str:
                 f"{payload.get('horizon_blocks')} blocks (simulation-trained)")
     if topic == "ai_strategy_thinking":
         model = payload.get("model") or "LLM"
-        return f"Reasoning ({model}): {payload.get('reasoning') or 'No rationale returned'}"
+        prefix = f"Reasoning ({model})"
+        if payload.get("is_fallback"):
+            primary = payload.get("primary_model") or "primary model"
+            prefix += f" — fell back from {primary} (primary model unavailable)"
+        return f"{prefix}: {payload.get('reasoning') or 'No rationale returned'}"
     if topic in ("ai_strategy_updated", "ai_strategy_status"):
         state = payload.get("state")
         if state == "disabled":

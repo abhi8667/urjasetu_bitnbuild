@@ -7,6 +7,7 @@ import { DemoTransport, EngineTransport, ReplayTransport } from './transport'
 import { HAS_CONFIGURED_ENGINE } from './config'
 import { TelemetryGraph } from './TelemetryGraph'
 import { GovernancePanel } from './GovernancePanel'
+import { activityEventKey, useActivityScroll } from './activityScroll'
 import type { BlockPayload, EventPayload, RunSummary, ScenePayload, Transport, TransportStatus } from './types'
 
 const money = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
@@ -18,10 +19,12 @@ const title = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
 const orDash = (value: number | null | undefined, digits = 2, unit = '') =>
   value == null || Number.isNaN(value) ? '—' : `${value.toFixed(digits)}${unit}`
 
-function EventText({ event }: { event: EventPayload }) {
+function EventText({ event, onExpand }: { event: EventPayload; onExpand?: () => void }) {
   if (event.kind !== 'ai_strategy_thinking') return <>{event.text}</>
   const preview = event.text.length > 210 ? `${event.text.slice(0, 210).trimEnd()}...` : event.text
-  return <details className="reasoning-details">
+  return <details className="reasoning-details" onToggle={(toggleEvent) => {
+    if (toggleEvent.currentTarget.open) onExpand?.()
+  }}>
     <summary><span>{preview}</span><em>Show full reasoning</em></summary>
     <p>{event.text}</p>
   </details>
@@ -249,10 +252,7 @@ function CityApp() {
   const { scene, block, history, status, events, command, seek, replay, reconnect, summary, offline } =
     useGridTransport()
   const networkUrl = useCityBroadcast({ block, events, status, offline })
-  const traceRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (traceRef.current) traceRef.current.scrollTop = traceRef.current.scrollHeight
-  }, [events])
+  const traceScroll = useActivityScroll(events.at(-1), 'bottom')
 
   // Camera traversal state
   const [cameraMode, setCameraMode] = useState<CameraMode>('perspective')
@@ -918,11 +918,11 @@ function CityApp() {
           <div className="window-title-row"><span className="dot-cyan" /><h3>AGENT ACTIVITY</h3></div>
           <a href={networkUrl} target="_blank" rel="noopener noreferrer" aria-label="Open 3D agent network in a new tab" style={{ color: 'var(--accent-cyan)' }}>↗</a>
         </div>
-        <div className="window-body stream-log-body" ref={traceRef} role="log" aria-live="polite" aria-relevant="additions">
+        <div className="window-body stream-log-body" ref={traceScroll.ref} onScroll={traceScroll.onScroll} onWheel={traceScroll.onUserScroll} onPointerDown={traceScroll.onUserScroll} role="log" aria-live="polite" aria-relevant="additions">
           {events.length === 0 && <p className="stream-empty-text">Waiting for agent decisions…</p>}
-          {events.map((event, index) => <div className={`stream-log-entry ${event.kind === 'ai_strategy_thinking' ? 'is-thinking' : ''}`} key={`${event.block}-${index}`}>
+          {events.map((event) => <div className={`stream-log-entry ${event.kind === 'ai_strategy_thinking' ? 'is-thinking' : ''}`} key={activityEventKey(event)}>
             <span className="log-dot" style={{ background: event.agent === 'ai_trading' || event.agent === 'llm' ? '#bc8aff' : event.agent === 'grid_risk' ? '#50e4ed' : '#ffbd69' }} />
-            <span className="log-text"><strong className="log-agent">{title(event.agent)}{event.kind === 'ai_strategy_thinking' && <em className="thinking-badge">THINKING</em>}</strong><EventText event={event} /></span>
+            <span className="log-text"><strong className="log-agent">{title(event.agent)}{event.kind === 'ai_strategy_thinking' && <em className="thinking-badge">THINKING</em>}</strong><EventText event={event} onExpand={traceScroll.syncAfterLayout} /></span>
             <span className="log-time">B{event.block}</span>
           </div>)}
         </div>

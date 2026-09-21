@@ -317,6 +317,10 @@ class Runner:
                 self.bus.publish("ai_strategy_thinking", block, "ai_trading", {
                     "model": strategy_agent.last_model,
                     "reasoning": strategy_agent.last_reasoning,
+                    "is_fallback": (strategy_agent.last_model is not None
+                                    and strategy_agent.last_model
+                                    != strategy_agent.config.groq_primary_model),
+                    "primary_model": strategy_agent.config.groq_primary_model,
                 })
             self.bus.publish("ai_strategy_updated" if updated else "ai_strategy_status",
                              block, "ai_trading", {

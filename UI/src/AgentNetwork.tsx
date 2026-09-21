@@ -3,6 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber'
 import { Html, Line, OrbitControls, Stars } from '@react-three/drei'
 import * as THREE from 'three'
 import type { BlockPayload, EventPayload, TransportStatus } from './types'
+import { activityEventKey, useActivityScroll } from './activityScroll'
 import './agent-network.css'
 
 type Family = 'ML' | 'LLM' | 'Logic' | 'System' | 'Governance'
@@ -31,10 +32,12 @@ const routes = [
 ]
 const agentId = (event: EventPayload) => ({ risk: 'grid_risk', strategy: 'ai_trading', llm: 'ai_trading' }[event.agent] ?? event.agent)
 
-function EventText({ event }: { event: EventPayload }) {
+function EventText({ event, onExpand }: { event: EventPayload; onExpand?: () => void }) {
   if (event.kind !== 'ai_strategy_thinking') return <p>{event.text}</p>
   const preview = event.text.length > 240 ? `${event.text.slice(0, 240).trimEnd()}...` : event.text
-  return <details className="reasoning-details">
+  return <details className="reasoning-details" onToggle={(toggleEvent) => {
+    if (toggleEvent.currentTarget.open) onExpand?.()
+  }}>
     <summary><span>{preview}</span><em>Show full reasoning</em></summary>
     <p>{event.text}</p>
   </details>
@@ -129,6 +132,7 @@ export function AgentNetwork({ events, status, offline, block, synchronized }: {
   const visible = agents.filter((agent) => filter === 'All' || agent.family === filter)
   const current = agents.find((agent) => agent.id === selected)
   const filteredEvents = newestBlocksFirst(events.filter((event) => (!selected || agentId(event) === selected) && (filter === 'All' || agents.some((a) => a.id === agentId(event) && a.family === filter))))
+  const feedScroll = useActivityScroll(`${selected ?? ''}:${filter}:${activityEventKey(events.at(-1) ?? events)}`, 'top')
   return <main className="agent-network">
     <header className="network-header">
       <a href="#/" className="network-back">← <span>UrjaSetu</span></a>
@@ -161,9 +165,9 @@ export function AgentNetwork({ events, status, offline, block, synchronized }: {
         <div className="network-agent-list">{visible.map(agent => <button key={agent.id} onClick={() => setSelected(selected === agent.id ? null : agent.id)} aria-pressed={selected === agent.id}><i style={{ background: colors[agent.family] }} /><span>{agent.name}</span><small>{agent.family}</small></button>)}</div>
         {current && <div className="network-detail"><div><strong style={{ color: colors[current.family] }}>{current.name}</strong><button onClick={() => setSelected(null)} aria-label="Clear agent selection">×</button></div><p>{current.detail}</p><small>{events.filter(e => agentId(e) === current.id).length} events in current window</small><p className="network-paths">Sends to: {routes.filter(([from]) => from === current.id).map(([, to]) => agents.find(a => a.id === to)!.name).join(', ') || 'End of workflow'}</p></div>}
         <div className="network-feed-title"><h2>{current ? 'Agent activity' : 'Activity stream'}</h2><span>{filteredEvents.length} recent</span></div>
-        <div className="network-feed" role="log" aria-label="Recent agent events">{filteredEvents.length ? filteredEvents.map((event, index) => {
+        <div className="network-feed" ref={feedScroll.ref} onScroll={feedScroll.onScroll} onWheel={feedScroll.onUserScroll} onPointerDown={feedScroll.onUserScroll} role="log" aria-label="Recent agent events">{filteredEvents.length ? filteredEvents.map((event) => {
           const agent = agents.find(a => a.id === agentId(event))
-          return <article className={event.kind === 'ai_strategy_thinking' ? 'is-thinking' : ''} key={`${events.length}-${index}`} style={{ '--agent-color': agent ? colors[agent.family] : '#78e3b0' } as CSSProperties}><div><strong>{agent?.name ?? event.agent}{event.kind === 'ai_strategy_thinking' && <em className="thinking-badge">THINKING</em>}</strong><span>BLOCK {event.block}</span></div><EventText event={event} /><small>{event.kind.replaceAll('_', ' ')}</small></article>
+          return <article className={event.kind === 'ai_strategy_thinking' ? 'is-thinking' : ''} key={activityEventKey(event)} style={{ '--agent-color': agent ? colors[agent.family] : '#78e3b0' } as CSSProperties}><div><strong>{agent?.name ?? event.agent}{event.kind === 'ai_strategy_thinking' && <em className="thinking-badge">THINKING</em>}</strong><span>BLOCK {event.block}</span></div><EventText event={event} onExpand={feedScroll.syncAfterLayout} /><small>{event.kind.replaceAll('_', ' ')}</small></article>
         }) : <p className="network-empty">No events received{current ? ` from ${current.name}` : ''}. Waiting for activity in this stream.</p>}</div>
         <p className="network-note">{offline ? 'Demo events. ' : ''}Links show the documented workflow; recipients are inferred. Bubbles represent agent roles; consumer and prosumer pools are grouped.</p>
       </aside>

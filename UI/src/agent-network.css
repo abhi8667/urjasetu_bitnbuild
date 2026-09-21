@@ -327,6 +327,7 @@
   min-height:145px;
   scrollbar-width:thin;
   scrollbar-color:#28364b transparent;
+  scroll-behavior:smooth;
 }
 
 .network-feed article {
