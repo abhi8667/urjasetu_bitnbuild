@@ -9,7 +9,7 @@
 [![React 18](https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
 [![Three.js](https://img.shields.io/badge/Three.js-r173-black?style=for-the-badge&logo=three.js&logoColor=white)](https://threejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Build & Tests](https://img.shields.io/badge/Tests-12%20Suites%20Passing-brightgreen?style=for-the-badge&logo=githubactions&logoColor=white)](#automated-testing--formal-invariants)
+[![Build & Tests](https://img.shields.io/badge/Tests-19%20Suites%20Passing-brightgreen?style=for-the-badge&logo=githubactions&logoColor=white)](#automated-testing--formal-invariants)
 [![IBM Bob](https://img.shields.io/badge/IBM%20Bob-Powered-052FAD?style=for-the-badge&logo=ibm&logoColor=white)](https://www.ibm.com/)
 
 **Decentralised Autonomous P2P Energy Microgrid & Transformer Protection System**  
@@ -51,7 +51,13 @@
 - [Automated Testing & Formal Invariants](#automated-testing--formal-invariants)
 - [API Reference](#api-reference)
 - [Production Deployment](#production-deployment)
-- [How We Used IBM Bob's Plan Mode](#how-we-used-ibm-bobs-plan-mode)
+- [IBM Bob — Engineering Partnership](#ibm-bob--engineering-partnership)
+  - [The Development Workflow](#the-development-workflow)
+  - [Plan Mode — Architecture and Contracts](#plan-mode--architecture-and-contracts)
+  - [Agent Mode — Implementation](#agent-mode--implementation)
+  - [Debug Mode — Physics and Invariant Tracing](#debug-mode--physics-and-invariant-tracing)
+  - [Ask Mode — Investigation and Reasoning](#ask-mode--investigation-and-reasoning)
+  - [Custom Modes](#custom-modes)
 - [Authors & Acknowledgments](#authors--acknowledgments)
 - [License](#license)
 
@@ -105,39 +111,52 @@ flowchart TB
     end
 
     subgraph AutonomousEngine["UrjaSetu Autonomous Multi-Agent Core (Python 3.11)"]
-        Feed["Meter Feed & Telemetry Ingestion"]
-        Sentinel["Grid Sentinel Agent (Breach Detection)"]
-        Auction["Double Auction Clearing Engine"]
-        Reshape["LP Flow Reshaping Agent (SciPy Simplex)"]
-        Thermal["IEEE C57.91 Hot-Spot & Ageing Model"]
+        Feed["Meter Feed + Pre-Validation (720-block)"]
+        Bus["Event Bus (Ring Buffer · 16 Topics)"]
+        Sentinel["Grid Sentinel Agent (SN1-SN2)"]
+        Auction["Double Auction Clearing Engine (MK1-MK3)"]
+        Reshape["LP Flow Reshaping Agent (SciPy Simplex · FL4)"]
+        Thermal["IEEE C57.91 Hot-Spot & Ageing Model (HL1-HL4)"]
         Custody["BESS Virtual Custody Dispatcher"]
-        LLM["LLM Grid Explainer (Groq LLaMA 3.3)"]
+        RiskML["ML Grid Risk Agent (Logistic Regression)"]
+        AITrade["AI Trading Strategy Agent (Groq LLM · LM1)"]
+        Govern["Governance & Compliance Agent (GC-01–GC-12)"]
+        LLM["LLM Explainer + Ops Briefing (Qwen / GPT-OSS Fallback)"]
+        Persist["SQLite Persistence (Atomic Blocks · PS1)"]
     end
 
     subgraph ServiceBridge["High-Concurrency Communication Layer"]
         FastAPI["FastAPI Async Core"]
-        WS["WebSocket Stream (/ws @ 60 FPS Engine Ticks)"]
-        REST["REST Endpoints (/api/scene, /api/blocks, /api/health)"]
+        WS["WebSocket Stream (/ws)"]
+        REST["REST Endpoints (/api/scene · /api/blocks · /api/health · /api/summary)"]
     end
 
     subgraph WebClient["Digital Twin Frontend (React 18 + Three.js)"]
         Canvas["WebGL 3D City Viewport (Spatial Layout)"]
         Flow["Dynamic Shader Arcs & Power Flow Pulses"]
         Graph["SVG Real-Time Telemetry & Load Curves"]
-        Inspector["Node Inspector & Tariff Settlement Ledger"]
-        Scenarios["Curated Stress-Test Orchestrator"]
+        Inspector["Node Inspector & Settlement Ledger"]
+        AgentGraph["Agent Network Live Graph"]
+        GovPanel["Governance & Compliance Panel"]
+        Scenarios["Curated Stress-Test Scenarios + Cinematic Tour"]
     end
 
     PhysicalGrid --> Feed
-    Feed --> Sentinel
+    Feed --> Bus
+    Bus --> Sentinel
+    Bus --> RiskML
+    Bus --> AITrade
     Sentinel --> Auction
     Auction --> Reshape
     Reshape --> Thermal
     Reshape --> Custody
-    Thermal --> LLM
+    Thermal --> Govern
+    Govern --> LLM
+    Bus --> Persist
 
     Thermal --> FastAPI
     Custody --> FastAPI
+    Govern --> FastAPI
     FastAPI --> WS
     FastAPI --> REST
 
@@ -146,6 +165,8 @@ flowchart TB
     Canvas --> Flow
     WebClient --> Graph
     WebClient --> Inspector
+    WebClient --> AgentGraph
+    WebClient --> GovPanel
     Scenarios --> WS
 ```
 
@@ -204,11 +225,17 @@ Full topological agent stream (`#/agents`) rendering live interactions between M
 ## Key Features
 
 ### ⚡ Core Multi-Agent Grid Features
-- **Continuous Merit-Order Double Auction**: Matches willing prosumer sellers and consumer buyers every market block within regulatory tariff ceilings (₹4.50/kWh–₹7.80/kWh).
-- **Automated SciPy LP Reshaping**: When transformer capacity breaches 100%, the Flow Agent formulates a bounded Linear Program to curtail minimal bilateral transactions, restoring nominal loading in under 12 ms.
-- **Physical Loss Allocation**: Deducts actual transmission losses ($I^2R$) dynamically based on distance from the distribution transformer (DT) rather than applying an idealized flat loss coefficient.
-- **P2P Battery Energy Storage Custody**: Excess solar generated by full-battery households ($SOC = 100\%$) is automatically routed to nearby neighborhood batteries at 85%–98% state-of-charge, preventing curtailment.
-- **Transformer Preservation**: Keeps distribution transformer insulation hot-spots below the critical 110 °C threshold, extending asset lifespan by up to 300% relative to unconstrained net-metering.
+- **Continuous Merit-Order Double Auction**: Matches prosumer sellers and consumer buyers every hourly block within regulatory tariff ceilings (₹4.50/kWh–₹7.80/kWh). Invariants MK1–MK3 enforced on every clear.
+- **Automated SciPy LP Reshaping**: When transformer capacity breaches 100%, the Flow Agent formulates a bounded Simplex Linear Program to curtail minimal bilateral transactions, restoring nominal loading in under 12 ms.
+- **Physical Loss Allocation**: Deducts actual transmission losses ($I^2R$) dynamically based on surveyed distance from the distribution transformer (3.25%–6.75% per premises).
+- **P2P Battery Energy Storage Custody**: Excess solar from full-battery households ($SOC = 100\%$) is automatically routed to nearby neighborhood batteries at 85%–98% SoC, preventing curtailment.
+- **Transformer Preservation**: Keeps distribution transformer insulation hot-spots below the critical 110 °C threshold, extending asset lifespan relative to unconstrained net-metering.
+- **Governance & Compliance Agent**: 12 deterministic audit rules (GC-01–GC-12) monitor every block — loading thresholds, sustained thermal stress, market price ceilings, curtailment fairness, settlement integrity, hot-spot exceedances, and energy equity. Produces an immutable, traceable incident trail that committee members can independently verify.
+- **Operations Briefing Agent**: LLM-backed (with a fully deterministic fallback) daily summarizer. Answers three questions after each simulated day: *What changed?* — *What needs attention?* — *What action is recommended?* Never fabricates figures; the fallback template is always accurate.
+- **AI Trading Strategy Agent**: Groq LLM (primary: `qwen/qwen3.8-27b`, fallback: `openai/gpt-oss-120b`) tunes market strategy parameters (`discount`, `margin`, `bid_aggression`) once per simulated day based on weather, price history, and grid risk prediction. Exposes full LLM reasoning trace in the UI. Invariant LM1 permanently freezes `battery_reserve_frac`.
+- **ML Grid Risk Agent**: Dependency-free logistic regression (no external ML library) trains on the meter feed and predicts transformer overload risk per block, feeding forward into the AI strategy agent.
+- **Atomic SQLite Persistence**: All block writes run as one transaction across four tables. A mid-block failure rolls back completely. Invariant PS1: crash-resume produces cumulative loss-of-life identical to an uninterrupted run.
+- **Feed Pre-Validation**: The full 720-block meter feed is validated before block 0 — checking for missing premises, negative energy, NaN, out-of-range ambient temperatures, and equipment-flag contradictions. A run that starts is guaranteed to be able to finish.
 
 ### 🎮 Immersive Digital Twin UI
 - **Spatial 3D Viewport**: Procedurally constructed low-poly neighborhood accurately depicting surveyed geospatial coordinates, parapets, rooftop PV arrays, battery storage units, and streetlights.
@@ -216,9 +243,13 @@ Full topological agent stream (`#/agents`) rendering live interactions between M
   - 🟡 **Gold**: Active peer-to-peer consumer trades.
   - 🟢 **Neon Emerald**: P2P Battery Custody energy diversion.
   - 🔴 **Vibrant Red**: Curtailed / overloaded flow protection.
+- **Agent Network Live Graph**: Force-directed visualization of all active agents, event topics, and inter-agent messages streaming in real time from the engine's 16-topic event bus.
+- **Governance Panel**: Full audit view of GC-01–GC-12 incidents, per-day severity summaries (critical / warning / info), and compliance status across the 30-day run.
+- **Cinematic Tour Mode**: Guided walkthrough of key microgrid events — P2P battery custody transfers, transformer overload responses, and EV peak stress — with contextual narration.
 - **Dynamic 3D Badges**: Interactive 3D popups displaying live charging influx rate, battery state-of-charge, and prosumer diversion details.
 - **Telemetry Graph Panel**: Collapsible real-time SVG dashboard tracking transformer loading curves, loading limit lines, clearing prices, and EV charging spikes.
 - **Node Inspector & Ledger**: Deep dive into individual premises to inspect phase alignment, BESCOM retail tariffs, battery health, and net financial balances.
+- **Offline Demo Mode**: A built-in fixture (`demoFixture.ts`) provides a full synthetic block sequence so the 3D twin can be demonstrated without a live backend connection.
 
 ---
 
@@ -267,10 +298,13 @@ urjasetu/
 │   └── telemetry/             # Real smart meter 15-min load & solar time-series
 ├── docs/                      # PRDs, electrical single-line diagrams, engineering specs
 ├── engine/                    # Autonomous Agent & Mathematical Core
+│   ├── agents/                # Governance, Ops Briefing, AI Trading, ML Grid Risk
 │   ├── algo/                  # Double auction, LP reshape, IEEE thermal, loss models
+│   ├── bus.py                 # In-process ring-buffer event bus (16 topics)
 │   ├── config.py              # Feeder ratings, block hours, convergence tolerances
-│   ├── domain.py              # Strongly-typed domain models (Trades, Breaches, Ticks)
-│   └── feed.py                # Telemetry ingestion satisfying MeterFeed protocol
+│   ├── domain.py              # Strongly-typed frozen domain models (Trades, Incidents)
+│   ├── feed.py                # 720-block pre-validation & telemetry ingestion
+│   └── persistence.py         # SQLite atomic multi-table persistence (PS1)
 ├── grid/                      # Protection agents (Sentinel, Flow, Custody, Health)
 ├── img/                       # UI screenshots and digital twin visual assets
 ├── server/                    # Production FastAPI Application
@@ -279,13 +313,17 @@ urjasetu/
 ├── UI/                        # React 18 + Three.js Digital Twin Frontend
 │   ├── src/
 │   │   ├── City3D.tsx         # WebGL 3D city scene, lighting, and animated arcs
+│   │   ├── AgentNetwork.tsx   # Force-directed agent graph & live event stream
+│   │   ├── GovernancePanel.tsx# GC-01–GC-12 incident ledger & compliance audit
+│   │   ├── CinematicTour.tsx  # Guided camera walkthrough with event narration
 │   │   ├── TelemetryGraph.tsx # SVG real-time transformer & clearing price charts
 │   │   ├── App.tsx            # HUD, Node Inspector, scenarios dropdown, camera rig
+│   │   ├── demoFixture.ts     # Offline demo mode synthetic block fixture
 │   │   ├── transport.ts       # Robust WebSocket client with auto-reconnect
 │   │   └── types.ts           # Shared TypeScript interfaces matching Python contracts
 │   ├── Dockerfile             # Production Nginx multi-stage build
 │   └── nginx.conf             # Nginx reverse proxy with WebSocket support
-├── tests/                     # 12 comprehensive unit and integration test suites
+├── tests/                     # 19 unit & integration test suites (14 root + 5 grid)
 ├── docker-compose.yml         # One-click multi-container stack orchestration
 ├── Dockerfile                 # Engine container definition
 ├── render.yaml                # Infrastructure-as-code blueprint for Render
@@ -369,25 +407,32 @@ UrjaSetu includes an interactive scenarios selector in the top-right header:
 
 ## Automated Testing & Formal Invariants
 
-The UrjaSetu test suite enforces three non-negotiable physical and financial invariants across all trading blocks:
+The UrjaSetu test suite enforces strict physical, mathematical, and regulatory invariants across all 720 hourly trading blocks, defined as binding engineering contracts in `.bobrules`:
 
-1. **Conservation of Money (Invariant ST1)**:
-   $$\sum \text{Payment}_{\text{Consumers}} = \sum \text{Revenue}_{\text{Prosumers}} + \text{LossCompensation}_{\text{DISCOM}}$$
-2. **Conservation of Energy (Invariant FL4)**:
-   $$\sum P_{\text{Generation}} + P_{\text{GridImport}} = \sum P_{\text{Consumption}} + P_{\text{GridExport}} + P_{\text{LineLosses}}$$
-3. **Transformer Asset Preservation**:
-   $$\text{Ageing}_{\text{UrjaSetu P2P}} \le \text{Ageing}_{\text{Net Metering Baseline}} \quad (\forall t \in [0, 720])$$
+| Invariant ID | Target Module | What it Guarantees |
+|---|---|---|
+| **ST1** | `engine/agents/settlement.py` | **Conservation of Money**: $\sum \text{Payments} = \sum \text{Revenues} + \text{LossCompensation}_{\text{DISCOM}}$ across all trades. |
+| **FL4** | `engine/algo/reshape_lp.py` | **Conservation of Energy**: $\sum P_{\text{Gen}} + P_{\text{GridImport}} = \sum P_{\text{Cons}} + P_{\text{GridExport}} + P_{\text{Losses}}$. |
+| **HL1–HL4** | `grid/health.py` | **Thermal Monotonicity & Aging Bounds**: $F_{\text{AA}} \ge 0$, no retroactive adders billed (HL4 bills from $t-1$ active adders). |
+| **MK1–MK3** | `engine/algo/auction.py` | **Auction Clearing**: Quantity $\le \min(\text{offered}, \text{bid})$, price bounded strictly within tariff envelope, deterministic execution. |
+| **SN1–SN2** | `grid/sentinel.py` | **Sentinel Purity**: Read-only state evaluation, breach severity $\ge 1.0$. |
+| **LM1** | `engine/algo/llm.py` | **Parameter Clamping**: LLM may only mutate 4 clamped fields; `battery_reserve_frac` is permanently frozen. |
+| **PS1** | `engine/persistence.py` | **Crash-Resume Equivalence**: Restart from intermediate block yields identical cumulative loss-of-life and settlement balances. |
+| **GC-01–GC-12** | `engine/agents/governance.py` | **12 Regulatory Audit Rules**: Continuous verification of thermal limits, price ceilings, fairness, and settlement integrity. |
 
 ### Running the Test Suite
 ```bash
-# Execute all 12 test suites
+# Full test checklist (checks SciPy, runs 19 suites, exits 1 on failure)
 ./run_tests.sh
 
-# Or run pytest directly
-pytest tests/ -v --tb=short
+# Fast checklist mode (skips slow scenario sweeps, ~10s)
+./run_tests.sh --quick
 
-# Run independent agent verification checks (50 checks)
-python temp/checks/verify_agents.py
+# Or run pytest directly across all 19 test files
+python -m pytest tests/ -v
+
+# Run grid protection agent sub-suite specifically
+python -m pytest tests/grid/ -v
 ```
 
 ---
@@ -485,23 +530,146 @@ the server is running; it does not verify Groq access.
 
 ---
 
-## How We Used IBM Bob's Plan Mode
+## IBM Bob — Engineering Partnership
 
-Throughout the design and engineering of **UrjaSetu**, we utilized **IBM Bob's Plan Mode** as our foundational AI systems architect. Rather than jumping directly into writing ad-hoc code, Plan Mode allowed us to formulate physical contracts, mathematically sound invariants, and decoupled subsystem specifications before touching implementation:
+Building a cyber-physical microgrid requires synthesizing financial double auction economics with strict power systems electrical engineering and dynamic thermodynamics. Ad-hoc generative coding quickly collapses in such environments, where subtle errors—such as active vs. apparent power conversions or retroactive fee application—cause silent physical or economic invariant failures.
 
-### 1. Contract-First Architectural Decomposition
-- **Strict Unidirectional Layering**: Plan Mode established a clean dependency flow (`Algorithms` &rarr; `Market & Grid Agents` &rarr; `Tick Loop / Ring Buffer` &rarr; `3D Interface`), enforcing that the WebGL frontend renders without executing electrical simulation and algorithmic solvers remain pure, stateless, and instantly unit-testable.
-- **Frozen Protocol Schemas**: Prior to backend simulation or 3D scene construction, Plan Mode drafted frozen Python dataclasses and TypeScript interface contracts (`engine/domain.py` &harr; `UI/src/types.ts`), completely preventing cross-layer drift over WebSocket streams and REST routes.
+Throughout the development of **UrjaSetu**, **IBM Bob** served as our core AI systems architect and pair-programming partner. Operating under strict, contract-first workflows, Bob enabled us to design, implement, debug, and verify the entire platform with mathematical and physical rigor.
 
-### 2. Physical Invariants & Mathematical Formulation
-- **Hard Electrical Constraints**: Through Plan Mode, we specified continuous double auction clearing algorithms, the SciPy simplex Linear Program for transformer overload reshaping ($\min \sum (P_{\text{curtail}} + P_{\text{battery}})$ subject to feeder thermal bounds), and the IEEE Std C57.91-2011 dynamic Arrhenius ageing equations ($F_{AA} = \exp\left[\frac{15000}{383} - \frac{15000}{\Theta_H + 273}\right]$).
-- **Formal Invariant Definitions**: Plan Mode formulated the 12 formal physical and economic invariants (e.g. non-negative clearing, conservation of energy, BESS SoC $[0.1, 1.0]$, transformer capacity $\sum P_i \le S_{\max}$) that form the backbone of our automated verification suites.
+```
+Problem Framing (Whitefield Feeder, Indian LT Distribution, P2P Energy Constraints)
+                                       │
+                                       ▼
+                  📋 Plan Mode: Architecture & Contract Formulation
+                  • Frozen domain dataclasses (engine/domain.py)
+                  • Mathematical optimization (Simplex LP Reshaping)
+                  • Thermodynamic modeling (IEEE Std C57.91-2011)
+                  • Decision logs & trade-offs (DECISIONS.md D1–D21)
+                  • Formal invariants & workspace rules (.bobrules)
+                                       │
+                                       ▼
+                  🔋 Agent Mode: Invariant-Safe Implementation
+                  • Core multi-agent engine & 16-topic ring-buffer bus
+                  • 19 comprehensive test suites (14 root + 5 grid sub-suite)
+                  • Full React 18 / Three.js spatial digital twin & HUD
+                  • Git commits co-authored (Co-authored-by: Bob <bob@ibm.com>)
+                                       │
+                    ┌──────────────────┴──────────────────┐
+                    ▼                                     ▼
+      🔬 Debug Mode: Invariant Tracing        ⚡ Ask Mode: Codebase Inquiry
+      • kW vs. kVA power factor fix (D16)     • Cross-referencing DECISIONS.md
+      • Stale block-hours resolution (D17)    • Tracing state transitions
+      • Retroactive adder fix (D18, HL4)      • BESCOM regulatory compliance
+      • Reshape direct-apply fix (D20)        • Explaining invariant interactions
+                                       │
+                                       ▼
+                  Validation: Full Test Pass (19/19 Suites) + Human Verification
+```
 
-### 3. Engineering Decision Rationalization (`DECISIONS.md`)
-- **Real-World Grid Adaptation**: When analyzing the raw Bengaluru feeder telemetry, Plan Mode systematically evaluated trade-offs and documented architectural decision records (D1–D14 in `DECISIONS.md`). Key choices included rightsizing transformer ratings to realistic Indian LT standards (125 kVA / 63 kVA) and focusing the protection logic on evening-peak EV concurrency rather than synthetic daytime reverse flows.
+---
 
-### 4. Adversarial Verification & Falsification Engineering
-- **Falsification-Oriented Testing**: Rather than writing tests to simply rubber-stamp code, Plan Mode designed the blueprint for `temp/AGENT_VERIFICATION_GUIDE.md` and `temp/checks/verify_agents.py`—an exhaustive 50-check harness designed to rigorously stress-test and attempt to falsify transformer thermal dynamics, P2P battery custody diversions, and financial settlement ledgers.
+### The Development Workflow
+
+Our engineering partnership followed a disciplined, unidirectional lifecycle:
+1. **Contract Formulation**: Before writing executable logic, Plan Mode specified mathematical formulations, frozen data types, and non-negotiable formal invariants.
+2. **Implementation & Invariant Compliance**: Agent Mode implemented modules against those contracts, adhering to the binding constraints recorded in `.bobrules`.
+3. **Diagnostic Root-Cause Tracing**: When edge cases or physics discrepancies emerged, Debug Mode isolated the discrepancy at the invariant level rather than patching symptoms.
+4. **Iterative Audit & Inquiry**: Ask Mode provided zero-side-effect semantic analysis across the codebase, ensuring new additions never violated past decisions recorded in `DECISIONS.md`.
+
+---
+
+### Plan Mode — Architecture and Contracts
+
+**IBM Bob's Plan Mode** functioned as our chief systems architect:
+
+- **Contract-First Decomposition**: Enforced a strict unidirectional dependency hierarchy (`engine/algo/` &rarr; `engine/agents/` &rarr; `grid/` &rarr; `engine/sim/` &rarr; `server/` &rarr; `UI/`). Algorithmic solvers remain pure, stateless, and independently testable without database or network mocks.
+- **Frozen Protocol Schemas**: Penned frozen Python dataclasses (`engine/domain.py`) and corresponding TypeScript definitions (`UI/src/types.ts`) before implementing runtime pipelines, preventing cross-layer drift across WebSocket streams.
+- **Mathematical & Thermodynamic Modeling**:
+  - Formulated the SciPy Simplex LP overload reshaping model ($\min_{\Delta q} \sum c_i \Delta q_i$) to preserve local low-loss transactions during transformer stress.
+  - Specified the IEEE Std C57.91-2011 winding hot-spot dynamics and Arrhenius loss-of-life acceleration equations ($F_{\text{AA}} = \exp\left[\frac{15000}{383.15} - \frac{15000}{\Theta_{\text{H}} + 273.15}\right]$).
+- **Formal Invariant Architecture**: Formulated the non-negotiable invariant system enforced in tests and runtime audits:
+  - **ST1**: Conservation of money ($\sum \text{Payments} = \sum \text{Revenues} + \text{LossCompensation}$).
+  - **FL4**: Conservation of energy ($\sum P_{\text{Gen}} + P_{\text{Import}} = \sum P_{\text{Cons}} + P_{\text{Export}} + P_{\text{Losses}}$).
+  - **HL1–HL4**: Thermal monotonicity, non-negative aging, and prohibition of retroactive loss-of-life billing.
+  - **MK1–MK3**: Double auction bounds, clearing price boundaries, and determinism.
+  - **SN1–SN2**: Sentinel purity and minimum breach severity bounds.
+  - **LM1**: LLM parameter clamping with frozen `battery_reserve_frac`.
+  - **PS1**: Crash-resume equivalence across simulation interruptions.
+  - **GC-01–GC-12**: 12 deterministic regulatory governance audit rules.
+- **Architectural Decision Records (`DECISIONS.md`)**: Bob documented 21 structured decision records (D1–D21) capturing real-world trade-offs, Indian LT grid conditions, and mathematical boundary constraints.
+
+---
+
+### Agent Mode — Implementation
+
+**IBM Bob's Agent Mode** executed implementation tasks with disciplined adherence to engineering contracts:
+
+- **Full-Stack Implementation**: Developed the autonomous multi-agent core in Python 3.11, the FastAPI high-concurrency WebSocket bridge, and the React 18 / Three.js 3D digital twin viewport.
+- **Comprehensive Test Suite**: Authored 19 test suites (14 top-level and 5 dedicated grid-protection suites) verifying every agent, algorithm, and invariant.
+- **Co-Authored Version Control**: All commits produced with Agent Mode were marked with Git provenance:
+  ```git
+  Co-authored-by: Bob <bob@ibm.com>
+  ```
+- **Invariant Enforcement**: Every change verified against the workspace rules in `.bobrules`, ensuring no regression in money conservation, energy conservation, or thermal safety.
+
+---
+
+### Debug Mode — Physics and Invariant Tracing
+
+Rather than surface-level patching, **IBM Bob's Debug Mode** traced subtle cyber-physical bugs down to their mathematical origins:
+
+- **Decision D16 (Active kW vs. Apparent kVA Discrepancy)**:
+  - *Symptom*: Flow reshaping was curtailing trades prematurely even when apparent power was well within transformer thermal ratings.
+  - *Diagnosis*: Active power (kW) was being evaluated directly against transformer ratings (kVA) without applying the power factor ($\text{pf} = 0.95$).
+  - *Resolution*: Centralized all apparent power conversions into a single canonical function `engine/physics.py:apparent_kva()`, eliminating ad-hoc division across agents.
+- **Decision D17 (Stale 15-Minute Block Assumption)**:
+  - *Symptom*: Energy accumulation calculations diverged by a factor of 4 when running hourly blocks.
+  - *Diagnosis*: Hardcoded `0.25` literals persisted from early 15-minute prototype experiments.
+  - *Resolution*: Enforced dynamic temporal scaling based exclusively on `config.block_hours` throughout all thermal, energy, and loss computations.
+- **Decision D18 (Retroactive Thermal Adder Invariant Breach — HL4)**:
+  - *Symptom*: Financial settlement violated Invariant HL4 by billing prosumers using current-block loss-of-life adders.
+  - *Diagnosis*: Adders computed during block $t$ cannot be billed retrospectively in block $t$ without violating causal dispatch order.
+  - *Resolution*: Refactored `AgeingResult.ageing_adder` to always return `active_adders` computed in $t-1$, ensuring strictly forward-looking billing.
+- **Decision D20 (Reshape Re-Clear Dispatch Violation)**:
+  - *Symptom*: Re-running curtailed quantities through the double auction produced dispatch inconsistencies and violated priority merit-orders.
+  - *Diagnosis*: Auction clearing is intended for unconstrained economic matching; constrained outputs from the Simplex LP must not re-enter auction clearing.
+  - *Resolution*: Updated `MarketAgent.apply_reshape()` to directly apply `ReshapePlan.constrained_trades` to the market dispatch.
+
+---
+
+### Ask Mode — Investigation and Reasoning
+
+**IBM Bob's Ask Mode** served as a read-only codebase investigator and advisor:
+
+- **Architecture Cross-Referencing**: Verified that proposed modifications remained consistent with decisions D1–D21 in `DECISIONS.md`.
+- **Telemetry Analysis**: Extracted and explained power-flow characteristics, solar export patterns, and EV charging spikes across the Whitefield feeder dataset.
+- **Regulatory Alignment**: Checked platform behavior against Karnataka Electricity Regulatory Commission (KERC) open-access and rooftop solar guidelines.
+- **Root-Cause Inquiries**: Assisted human engineers in analyzing complex state transitions across the 16-topic event bus ring buffer.
+
+---
+
+### Custom Modes
+
+To maintain clear separation of responsibilities throughout the project, we leveraged five custom modes configured in `.bob/custom_modes.yaml`:
+
+| Mode | Identifier | Tool Permissions | Primary Role in UrjaSetu |
+|---|---|---|---|
+| **🔋 UrjaSetu Agent** | `agent` | `read`, `edit`, `execute`, `mcp`, `skill` | Full-stack implementation of engine algorithms, UI components, REST/WS server, and test suites. |
+| **⚡ UrjaSetu Ask** | `ask` | `read`, `mcp`, `skill` | Read-only codebase investigation, invariant explanation, and historical decision review. |
+| **📋 UrjaSetu Plan** | `plan` | `read`, `edit`, `mcp`, `skill` | Systems architecture, invariant definition, mathematical formulation, and `DECISIONS.md` documentation. |
+| **🔬 UrjaSetu Debug** | `debug` | `read`, `execute`, `mcp` | Mathematical invariant failure tracing, physics discrepancy isolation, and root-cause analysis. |
+| **🏛️ BESCOM Committee Advisor** | `bescom-committee-advisor` | `read`, `execute` | Independent regulatory viewpoint assessing grid compliance, tariff equity, and utility revenue neutrality. |
+
+---
+
+### Human & AI Division of Responsibility
+
+| Dimension | Abhishek & Human Team | IBM Bob |
+|---|---|---|
+| **Domain & Problem Formulation** | Whitefield feeder survey, BESCOM utility tariff slabs, EV hub layout, physical constraints. | Mathematical formalization (LP Simplex, Arrhenius ODE), frozen protocol schemas. |
+| **Architecture & Invariants** | System goals, high-level multi-agent concept, financial neutrality objectives. | Invariant formulation (ST1, FL4, HL1–HL4, MK1–MK3, SN1–SN2, LM1, PS1), `DECISIONS.md`. |
+| **Implementation** | Architectural direction, feature prioritization, 3D aesthetics and Three.js visual styling. | Multi-agent Python core, FastAPI streaming, React HUD panels, 19 test suites, atomic persistence. |
+| **Quality & Verification** | End-to-end user evaluation, live deployment validation, scenario demonstrations. | Invariant violation diagnostics (D16, D17, D18, D20), adversarial test harness, continuous audit. |
 
 ---
 
