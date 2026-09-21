@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { City3D, type CameraMode } from './City3D'
+import { AgentNetwork } from './AgentNetwork'
 import { SyncedAgentNetwork, useCityBroadcast } from './agentSync'
 import { createDemoRun } from './demoFixture'
 import { DemoTransport, EngineTransport, ReplayTransport } from './transport'
@@ -8,6 +9,9 @@ import { HAS_CONFIGURED_ENGINE } from './config'
 import { TelemetryGraph } from './TelemetryGraph'
 import { GovernancePanel } from './GovernancePanel'
 import { activityEventKey, useActivityScroll } from './activityScroll'
+import { CinematicTour } from './CinematicTour'
+import { ViewModeModal } from './ViewModeModal'
+import './cinematic-tour.css'
 import type { BlockPayload, EventPayload, RunSummary, ScenePayload, Transport, TransportStatus } from './types'
 
 const money = (value: number) => `₹${Math.round(value).toLocaleString('en-IN')}`
@@ -259,16 +263,21 @@ function CityApp() {
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
 
   // Floating Window toggles (Matches Image 1 buttons & Image 2 multi-windows)
-  const [detailPanel, setDetailPanel] = useState<'health' | 'ledger' | 'node' | 'governance' | null>(null)
+  const [detailPanel, setDetailPanel] = useState<'health' | 'ledger' | 'node' | 'governance' | 'agents' | null>(null)
   const showTransformerHealth = detailPanel === 'health'
   const showDiscomLedger = detailPanel === 'ledger'
   const showNodeInspector = detailPanel === 'node'
   const showGovernance = detailPanel === 'governance'
+  const showAgentNetwork = detailPanel === 'agents'
   const [isNightMode, setIsNightMode] = useState(true)
   const [showTelemetryGraph, setShowTelemetryGraph] = useState(false)
   const [custodyHighlight, setCustodyHighlight] = useState<{ from: string; to: string; kwh: number } | null>(null)
   // Live dynamic battery charging state: increases in real-time as power transfers into host
   const [custodyChargePct, setCustodyChargePct] = useState(82)
+
+  // View Mode: 'modal' (launch choice), 'demo' (cinematic tour), or 'free' (free operator cockpit)
+  const [viewMode, setViewMode] = useState<'modal' | 'demo' | 'free'>('modal')
+  const [tourStepIndex, setTourStepIndex] = useState(-1) // -1 = blackout, 0 = splash, 1..9 = scenes
 
   useEffect(() => {
     if (!custodyHighlight) {
@@ -351,10 +360,32 @@ function CityApp() {
     }
   }, [])
 
+  const triggerCustodyScenario = useCallback(() => {
+    const pvHouse =
+      scene?.houses.find((h) => h.has_pv && h.has_battery) ??
+      scene?.houses.find((h) => h.id === '10006') ??
+      scene?.houses[0]
+    const battHouse =
+      scene?.houses.find((h) => Boolean(h.has_battery) && (h.battery_kwh ?? 0) > 0 && h.id !== pvHouse?.id) ??
+      scene?.houses.find((h) => Boolean(h.has_battery) && h.id !== pvHouse?.id) ??
+      scene?.houses.find((h) => h.id === '20018') ??
+      scene?.houses.find((h) => h.id === '20020')
+    if (pvHouse && battHouse) {
+      seek(11)
+      setCustodyHighlight({ from: pvHouse.id, to: battHouse.id, kwh: 4.8 })
+      handleSelectNode(pvHouse.id)
+    }
+  }, [scene, seek, handleSelectNode])
+
+  const resetScenarios = useCallback(() => {
+    setCustodyHighlight(null)
+  }, [])
+
   // Keyboard controls
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (window.location.hash === '#/agents') return
+      if (viewMode === 'demo') return
       // Typing 'd' into a field must not derate a transformer. The guard used
       // to cover input and select only, so a textarea or any contenteditable
       // surface still fired grid commands mid-word.
@@ -391,7 +422,7 @@ function CityApp() {
     return () => window.removeEventListener('keydown', onKey)
     // `reconnect` was missing here, so the 'L' shortcut kept calling the
     // reconnect closure captured on the first render.
-  }, [command, replay, reconnect, status, showTelemetryGraph, custodyHighlight])
+  }, [command, replay, reconnect, status, showTelemetryGraph, custodyHighlight, viewMode])
 
   // Computed metrics for HUD
   // Traded energy this block, as traded. The old version added a literal 140
@@ -543,8 +574,10 @@ function CityApp() {
         {/* Center: Navigation Action Pills with ↗ icon */}
         <nav className="header-nav-pills">
           <button
-            className="nav-pill-btn"
-            onClick={() => window.open(networkUrl, '_blank', 'noopener,noreferrer')}
+            className={`nav-pill-btn ${showAgentNetwork ? 'pill-active' : ''}`}
+            onClick={() => setDetailPanel(current => current === 'agents' ? null : 'agents')}
+            aria-pressed={showAgentNetwork}
+            title="Toggle 3D Agent Network & Stream (or Click to Inspect)"
           >
             <svg className="pill-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="5" r="3" />
@@ -611,6 +644,22 @@ function CityApp() {
 
         {/* Right: Simulation Controls & Live Badge */}
         <div className="header-right-group">
+          {/* Presentation Mode Quick Switcher */}
+          <button
+            className={`header-mode-toggle-btn ${viewMode === 'demo' ? 'in-demo-mode' : ''}`}
+            onClick={() => {
+              if (viewMode === 'demo') {
+                setViewMode('free')
+              } else {
+                setViewMode('demo')
+                setTourStepIndex(-1)
+              }
+            }}
+            title="Switch between Guided Presentation Demo and Free View"
+          >
+            <span>{viewMode === 'demo' ? '🎮 Free View' : '🎬 Demo Tour'}</span>
+          </button>
+
           {/* Curated Demo Scenarios Dropdown */}
           <div className="demo-dropdown-container">
             <select
@@ -1319,6 +1368,20 @@ function CityApp() {
         />
       )}
 
+      {/* 12. In-Scene 3D Agent Network & Stream View */}
+      {showAgentNetwork && (
+        <div className="in-scene-agent-network-overlay" role="dialog" aria-label="3D Agent Network Stream">
+          <AgentNetwork
+            events={events}
+            status={status}
+            offline={offline}
+            block={block}
+            synchronized={true}
+            onClose={() => setDetailPanel(null)}
+          />
+        </div>
+      )}
+
       {/* 10. Real-Time Telemetry & Load Dynamics Graph */}
       {showTelemetryGraph && (
         <TelemetryGraph
@@ -1326,6 +1389,31 @@ function CityApp() {
           currentBlock={block}
           onSeek={seek}
           onClose={() => setShowTelemetryGraph(false)}
+        />
+      )}
+
+      {/* Launch Mode Selection Modal */}
+      {viewMode === 'modal' && (
+        <ViewModeModal
+          onSelectDemo={() => {
+            setViewMode('demo')
+            setTourStepIndex(-1)
+          }}
+          onSelectFree={() => setViewMode('free')}
+        />
+      )}
+
+      {/* Cinematic Demo Tour Overlay */}
+      {viewMode === 'demo' && (
+        <CinematicTour
+          stepIndex={tourStepIndex}
+          onStepChange={setTourStepIndex}
+          onExitTour={() => setViewMode('free')}
+          setCameraMode={setCameraMode}
+          setDetailPanel={setDetailPanel}
+          setShowTelemetryGraph={setShowTelemetryGraph}
+          triggerCustodyScenario={triggerCustodyScenario}
+          resetScenarios={resetScenarios}
         />
       )}
     </div>

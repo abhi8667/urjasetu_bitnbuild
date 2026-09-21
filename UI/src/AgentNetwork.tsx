@@ -111,7 +111,7 @@ function Connection({ from, to, active, highlighted, paused }: { from: Agent; to
   </group>
 }
 
-export function AgentNetwork({ events, status, offline, block, synchronized }: { events: EventPayload[]; status: TransportStatus; offline: boolean; block: BlockPayload | null; synchronized: boolean }) {
+export function AgentNetwork({ events, status, offline, block, synchronized, onClose }: { events: EventPayload[]; status: TransportStatus; offline: boolean; block: BlockPayload | null; synchronized: boolean; onClose?: () => void }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [filter, setFilter] = useState<Family | 'All'>('All')
   const [paused, setPaused] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
@@ -135,7 +135,19 @@ export function AgentNetwork({ events, status, offline, block, synchronized }: {
   const feedScroll = useActivityScroll(`${selected ?? ''}:${filter}:${activityEventKey(events.at(-1) ?? events)}`, 'top')
   return <main className="agent-network">
     <header className="network-header">
-      <a href="#/" className="network-back">← <span>UrjaSetu</span></a>
+      <a
+        href="#/"
+        className="network-back"
+        onClick={(e) => {
+          if (onClose) {
+            e.preventDefault()
+            onClose()
+          }
+        }}
+        title={onClose ? "Close to 3D City" : "Back to City"}
+      >
+        ← <span>UrjaSetu</span>
+      </a>
       <span className="network-breadcrumb">INTELLIGENCE / AGENT NETWORK</span>
       <span className="network-source"><i />{!synchronized ? 'CITY DISCONNECTED' : offline ? 'SYNCED DEMO' : `CITY SYNCED / ${status.toUpperCase()}`} </span>
     </header>
