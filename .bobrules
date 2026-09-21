@@ -1,0 +1,56 @@
+# UrjaSetu — workspace invariants enforced in every mode
+
+## LM1 — Strategy parameter constraint
+The LLM agent may modify exactly THREE clamped strategy fields:
+  - discount       (0.50 – 1.00)
+  - margin         (0.02 – 0.30)
+  - bid_aggression (0.50 – 1.50)
+
+`battery_reserve_frac` is PERMANENTLY FROZEN. Never propose, suggest, or
+execute any modification to this field, regardless of the task. It is listed
+in `engine/algo/llm.py:_LM1_FROZEN` and skipped before the clamp loop runs.
+
+## Temporal granularity
+1 simulation block = 1 hour exactly (DECISIONS.md D2, `config.block_minutes=60`).
+The literal `0.25` anywhere in engine code is always a bug (stale 15-minute
+assumption). All per-block quantities scale off `config.block_hours`, never a
+literal.
+
+## Domain types and unit conversions
+All physical conversions and domain sanity checks must go through the published
+types and helpers — never inline:
+
+  - kW → kVA:        `engine/physics.py:apparent_kva(kw, config.power_factor)`
+  - kVA loading K:   `engine/physics.py:loading_k(kw, rating_kva, pf)`
+  - kW headroom:     `engine/physics.py:kw_headroom_for(rating_kva, limit, pf)`
+  - hot-spot °C:     `engine/algo/thermal.py:hotspot_c(load_kva, rating_kva, ambient_c)`
+  - ageing factor:   `engine/algo/thermal.py:ageing_factor(hotspot_c)`
+  - trade quantity:  `engine/trades.py:delivered_kwh(trade)` (never re-derive inline)
+  - domain objects:  `engine/domain.py` — frozen dataclasses, append-only contract
+
+Never write `/ 0.95`, `* 0.95`, or any raw numeric unit conversion in engine or
+grid code. If a helper does not exist for the conversion needed, add it to the
+appropriate module and call it from there.
+
+## Governance incident fields (GC-01 to GC-12)
+Every incident logged or escalated by the governance agent must include ALL of:
+  - transformer_id   — e.g. "DT-1"
+  - block            — integer block number in the 30-day run (0–719)
+  - hotspot_c        — °C from `AgeingResult.states[*].hotspot_c` at that block
+  - rule_id          — e.g. "GC-02"
+
+These map to `engine/agents/governance.py:Incident` fields (rule, block, subject,
+detail). Rules and thresholds:
+
+  GC-01  loading > 85%  of rated     (WARN_LOADING_PCT)
+  GC-02  loading > 100% of rated     (CRITICAL_LOADING_PCT)
+  GC-03  stressed ≥ 3 consecutive blocks
+  GC-04  clearing price > ₹7.00/kWh  (PRICE_WARN_INR)
+  GC-05  one house > 50% of all curtailment in a block
+  GC-06  total charges < ₹0.01 when trades cleared
+  GC-07  hot-spot > 95 °C            (HOT_SPOT_WARN_C)
+  GC-08  hot-spot > 110 °C           (HOT_SPOT_CRITICAL_C)
+  GC-09  house received zero P2P energy across a full day
+  GC-10  house paid above-average charges for 5+ consecutive days
+  GC-11  battery discharge zero when a loading breach occurred
+  GC-12  predicted breach not followed by reshape within 2 blocks
