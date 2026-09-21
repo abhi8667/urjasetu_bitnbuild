@@ -677,7 +677,10 @@ To maintain clear separation of responsibilities throughout the project, we leve
 
 - **Lead Architect & Developer**: [Abhishek](https://github.com/abhi8667)
 - **Contributor**: [IBM Bob](https://github.com/IBM/ibm-bob) — AI pair-programmer; co-authored UI components, engine logic, and test suite.
-- **Contributor**: [Tarun Aadhithya](https://github.com/tarun-codes07) — UI development, AgentNetwork visualisation, and integration.
+- **Contributors**: [Tarun Aadhithya](https://github.com/tarun-codes07) — UI development, AgentNetwork visualisation, and integration.
+                    [Sudeepti Sagar](https://github.com/SudeeptiSagar)
+                    [Daivik Mankame](https://github.com/daivikmank-bit)
+                    [Saish Ambar](https://github.com/SaishAmbar)
 - **Data & Topological Source**: Real surveyed low-voltage distribution network in Whitefield, Bengaluru (BESCOM 11 kV / 415 V feeder system).
 - **Standards & Methodology**: Thermal calculations follow **IEEE Std C57.91-2011** (Guide for Loading Mineral-Oil-Immersed Transformers).
 
