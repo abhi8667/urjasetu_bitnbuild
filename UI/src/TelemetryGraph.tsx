@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import type { BlockPayload } from './types'
 
 interface TelemetryGraphProps {
@@ -14,6 +14,13 @@ const DT_COLORS: Record<string, string> = {
   'DT-3': '#f59e0b', // Amber (central / most active)
   'DT-4': '#a855f7', // Purple
 }
+
+/** Colour for a transformer the palette above does not name. The street has
+ *  four transformers today, but the chart is fed from the engine's block
+ *  payload and a hardcoded key list silently drops any fifth one. */
+const FALLBACK_COLORS = ['#ec4899', '#38bdf8', '#84cc16', '#fb923c']
+const colorFor = (id: string, index: number) =>
+  DT_COLORS[id] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length]
 
 export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
   history,
@@ -38,12 +45,23 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
   // Expanded chart dimensions with generous widescreen headroom
   const width = 1440
   const height = 380
-  const padding = { top: 40, right: 48, bottom: 44, left: 68 }
+  const padding = { top: 40, right: 74, bottom: 44, left: 68 }
   const plotWidth = width - padding.left - padding.right
   const plotHeight = height - padding.top - padding.bottom
 
-  // Y-axis range for loading: 0% to 140%
-  const maxY = 140
+  // Y-axis range for loading. 140% was a fixed ceiling, so a genuine 180%
+  // overload — exactly the event this chart exists to show — drew as a flat
+  // line pinned to the top border, indistinguishable from 140%. The axis grows
+  // to fit the worst reading instead, in 20-point steps.
+  const peakLoadingPct = dataPoints.reduce(
+    (peak, bp) =>
+      Object.values(bp.transformers ?? {}).reduce(
+        (blockPeak, t) => Math.max(blockPeak, (t?.loading ?? 0) * 100),
+        peak,
+      ),
+    0,
+  )
+  const maxY = Math.max(140, Math.ceil(peakLoadingPct / 20) * 20)
   const getY = (valPct: number) => padding.top + plotHeight - (Math.min(valPct, maxY) / maxY) * plotHeight
   const getX = (idx: number) =>
     dataPoints.length > 1
@@ -58,33 +76,65 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
   const getPriceY = (price: number) =>
     padding.top + plotHeight - (Math.min(price, maxPrice) / maxPrice) * plotHeight
 
-  // Generate DT paths
-  const dtKeys = ['DT-1', 'DT-2', 'DT-3', 'DT-4']
+  // The transformers the engine actually sent, in stable order. A hardcoded
+  // ['DT-1'..'DT-4'] draws a flat 0% line for any id the run does not have and
+  // silently omits any it does — the same class of bug the HUD gauges had.
+  const dtKeys = useMemo(() => {
+    const seen = new Set<string>()
+    dataPoints.forEach((bp) => Object.keys(bp.transformers ?? {}).forEach((id) => seen.add(id)))
+    return [...seen].sort()
+  }, [dataPoints])
+
+  // A transformer missing from one block is a gap, not a zero. Each run of
+  // consecutive readings becomes its own subpath so the line breaks instead of
+  // diving to the floor and back.
   const dtPaths: Record<string, string> = {}
-
   dtKeys.forEach((dt) => {
-    const points = dataPoints.map((bp, i) => {
-      const loadPct = Math.round((bp.transformers?.[dt]?.loading ?? 0) * 100)
-      return `${getX(i)},${getY(loadPct)}`
+    let path = ''
+    let open = false
+    dataPoints.forEach((bp, i) => {
+      const loading = bp.transformers?.[dt]?.loading
+      if (loading == null || Number.isNaN(loading)) { open = false; return }
+      path += `${open ? ' L ' : (path ? ' M ' : 'M ')}${getX(i)},${getY(loading * 100)}`
+      open = true
     })
-    dtPaths[dt] = points.length > 0 ? `M ${points.join(' L ')}` : ''
+    dtPaths[dt] = path
   })
 
-  // Generate Price path
-  const pricePoints = dataPoints.map((bp, i) => {
-    const price = bp.clearing_price ?? 4.5
-    return `${getX(i)},${getPriceY(price)}`
+  // Clearing price. `?? 4.5` was here: a block in which nothing cleared was
+  // drawn at a plausible-looking ₹4.50, which on a night-time street is most of
+  // the chart. No clearing price is a gap in the line.
+  let pricePath = ''
+  let priceOpen = false
+  dataPoints.forEach((bp, i) => {
+    if (bp.clearing_price == null) { priceOpen = false; return }
+    pricePath += `${priceOpen ? ' L ' : (pricePath ? ' M ' : 'M ')}${getX(i)},${getPriceY(bp.clearing_price)}`
+    priceOpen = true
   })
-  const pricePath = pricePoints.length > 0 ? `M ${pricePoints.join(' L ')}` : ''
 
   // Active block index
   const activeIdx = dataPoints.findIndex((bp) => bp.block === currentBlock?.block)
 
   const activeOrHovered = hoveredIdx !== null ? dataPoints[hoveredIdx] : currentBlock
 
+  /** Most-loaded transformer in the block on screen, whichever one that is. */
+  const worstDt = useMemo(() => {
+    const entries = Object.entries(activeOrHovered?.transformers ?? {})
+      .filter(([, state]) => state?.loading != null)
+    if (entries.length === 0) return null
+    const [id, state] = entries.reduce((a, b) => (b[1].loading > a[1].loading ? b : a))
+    return { id, loading: state.loading }
+  }, [activeOrHovered])
+
   return (
     <div className="telemetry-modal-backdrop" onClick={onClose}>
-      <div className="telemetry-drawer" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="telemetry-drawer"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Real-time grid telemetry and load dynamics"
+      >
         <div className="telemetry-header">
           <div className="telemetry-title-group">
             <span className="telemetry-pulse-dot" />
@@ -93,9 +143,9 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
           </div>
           <div className="telemetry-controls-group">
             <div className="telemetry-legend">
-              {dtKeys.map((dt) => (
-                <span key={dt} className="legend-item" style={{ color: DT_COLORS[dt] }}>
-                  <span className="legend-color-box" style={{ background: DT_COLORS[dt] }} />
+              {dtKeys.map((dt, i) => (
+                <span key={dt} className="legend-item" style={{ color: colorFor(dt, i) }}>
+                  <span className="legend-color-box" style={{ background: colorFor(dt, i) }} />
                   {dt}
                 </span>
               ))}
@@ -122,33 +172,32 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
           <small>Block #{activeOrHovered?.block ?? 0}</small>
         </div>
         <div className="telemetry-stat-card">
-          <span className="stat-name">DT-3 Central Load</span>
-          <strong
-            className={`stat-highlight ${
-              (activeOrHovered?.transformers?.['DT-3']?.loading ?? 0) > 1.0 ? 'danger-text' : ''
-            }`}
-          >
-            {Math.round((activeOrHovered?.transformers?.['DT-3']?.loading ?? 0) * 100)}%
+          {/* Was pinned to DT-3. Which transformer is worst changes hour to
+              hour, and it is the worst one that decides whether the street
+              breaches. */}
+          <span className="stat-name">Peak DT Load{worstDt ? ` · ${worstDt.id}` : ''}</span>
+          <strong className={`stat-highlight ${worstDt && worstDt.loading > 1.0 ? 'danger-text' : ''}`}>
+            {worstDt ? `${Math.round(worstDt.loading * 100)}%` : '—'}
           </strong>
           <small>
-            {(activeOrHovered?.transformers?.['DT-3']?.loading ?? 0) > 1.0
-              ? '⚠️ Overload Breach'
-              : 'Nominal'}
+            {!worstDt ? 'No reading' : worstDt.loading > 1.0 ? '⚠️ Overload Breach' : 'Nominal'}
           </small>
         </div>
         <div className="telemetry-stat-card">
           <span className="stat-name">P2P Clearing Price</span>
           <strong className="stat-highlight">
-            ₹{activeOrHovered?.clearing_price?.toFixed(2) ?? '—'}
+            {activeOrHovered?.clearing_price != null
+              ? `₹${activeOrHovered.clearing_price.toFixed(2)}`
+              : '—'}
           </strong>
           <small>per kWh</small>
         </div>
         <div className="telemetry-stat-card">
           <span className="stat-name">Battery Reshape Discharge</span>
           <strong className="stat-highlight">
-            {activeOrHovered?.battery?.discharged_kwh
+            {activeOrHovered?.battery?.discharged_kwh != null
               ? `${activeOrHovered.battery.discharged_kwh.toFixed(1)} kWh`
-              : '0.0 kWh'}
+              : '—'}
           </strong>
           <small>Autonomous LP Flow</small>
         </div>
@@ -159,7 +208,11 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
         <svg
           viewBox={`0 0 ${width} ${height}`}
           className="telemetry-svg"
-          preserveAspectRatio="none"
+          // 'none' was here, which stretched stroke widths and axis labels
+          // non-uniformly at every viewport that is not exactly 1440x380.
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label="Transformer loading and P2P clearing price over the last blocks"
         >
           {/* Danger zone >100% */}
           <rect
@@ -171,7 +224,11 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
           />
 
           {/* Grid lines */}
-          {[0, 25, 50, 75, 100, 125].map((level) => {
+          {Array.from({ length: Math.floor(maxY / 25) + 1 }, (_, i) => i * 25)
+            .concat(100)
+            .filter((level, i, all) => all.indexOf(level) === i && level <= maxY)
+            .sort((a, b) => a - b)
+            .map((level) => {
             const y = getY(level)
             return (
               <g key={level}>
@@ -197,6 +254,47 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
               </g>
             )
           })}
+
+          {/* Right-hand price axis. The clearing price was plotted against its
+              own hidden 0–₹10 scale with no axis anywhere, so the dashed line
+              could be seen rising and falling but no value could be read off
+              it — and at a glance it sat among the loading curves as if it
+              were another percentage. */}
+          {[0, 2.5, 5, 7.5, 10].map((price) => (
+            <text
+              key={`price-${price}`}
+              x={width - padding.right + 10}
+              y={getPriceY(price) + 4}
+              textAnchor="start"
+              fill="rgba(234, 179, 8, 0.65)"
+              fontSize="11"
+              fontFamily="monospace"
+            >
+              ₹{price}
+            </text>
+          ))}
+          <text
+            x={width - padding.right + 10}
+            y={padding.top - 14}
+            textAnchor="start"
+            fill="#eab308"
+            fontSize="10.5"
+            fontFamily="monospace"
+            letterSpacing="0.6"
+          >
+            ₹/kWh
+          </text>
+          <text
+            x={padding.left - 10}
+            y={padding.top - 14}
+            textAnchor="end"
+            fill="rgba(255, 255, 255, 0.55)"
+            fontSize="10.5"
+            fontFamily="monospace"
+            letterSpacing="0.6"
+          >
+            DT LOAD
+          </text>
 
           {/* Time axis marks */}
           {dataPoints.map((bp, i) => {
@@ -252,15 +350,18 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
           </g>
 
           {/* DT Loading Paths */}
-          {dtKeys.map((dt) => (
+          {dtKeys.map((dt, i) => (
             <path
               key={dt}
               d={dtPaths[dt]}
               fill="none"
-              stroke={DT_COLORS[dt]}
-              strokeWidth={dt === 'DT-3' ? '3.2' : '2.0'}
-              strokeOpacity={dt === 'DT-3' ? '1' : '0.85'}
+              stroke={colorFor(dt, i)}
+              // Emphasis follows the transformer under the cursor, not a
+              // hardcoded DT-3.
+              strokeWidth={dt === worstDt?.id ? '3.2' : '2.0'}
+              strokeOpacity={dt === worstDt?.id ? '1' : '0.85'}
               strokeLinecap="round"
+              strokeLinejoin="round"
             />
           ))}
 
@@ -276,16 +377,25 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
 
           {/* Breach indicators */}
           {dataPoints.map((bp, i) => {
-            const hasBreach = dtKeys.some(
-              (dt) => (bp.transformers?.[dt]?.loading ?? 0) > 1.0
-            )
-            if (!hasBreach) return null
+            // One dot per breaching transformer, on that transformer's own
+            // line. This used to mark every breach at DT-3's height, so a DT-1
+            // overload put a red dot on a healthy DT-3 reading.
+            const breaching = dtKeys.filter((dt) => (bp.transformers?.[dt]?.loading ?? 0) > 1.0)
+            if (breaching.length === 0) return null
             const x = getX(i)
-            const dt3Load = Math.round((bp.transformers?.['DT-3']?.loading ?? 0) * 100)
-            const y = getY(dt3Load)
             return (
               <g key={`breach-${bp.block}`}>
-                <circle cx={x} cy={y} r="4" fill="#ef4444" stroke="#fff" strokeWidth="1" />
+                {breaching.map((dt) => (
+                  <circle
+                    key={dt}
+                    cx={x}
+                    cy={getY((bp.transformers?.[dt]?.loading ?? 0) * 100)}
+                    r="4"
+                    fill="#ef4444"
+                    stroke="#fff"
+                    strokeWidth="1"
+                  />
+                ))}
               </g>
             )
           })}
