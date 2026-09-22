@@ -238,8 +238,16 @@ def build_simulation(config: Config | None = None, days: int | None = None,
             "last_headline": (last_b.get("what_changed") or "")[:120],
         })
 
+    scene = payloads.scene_payload(feed, config)
+    first_dispatch = next(
+        (block["block"] for block in recorder.blocks
+         if (block.get("battery") or {}).get("dispatches")),
+        None,
+    )
+    scene["scenario_blocks"] = {"battery_dispatch": first_dispatch}
+
     return SimulationResult(
-        scene=payloads.scene_payload(feed, config),
+        scene=scene,
         blocks=recorder.blocks,
         events=events,
         summary=payloads.summary_payload(run_summary, comparison, config),

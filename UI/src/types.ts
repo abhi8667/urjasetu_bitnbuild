@@ -7,7 +7,7 @@
 // to 0.78 whenever the payload had none. Those are real per-premises values in
 // the registry and they now travel with the scene.
 
-export type TransportStatus = 'live' | 'replay' | 'stale' | 'disconnected' | 'connecting'
+export type TransportStatus = 'live' | 'replay' | 'complete' | 'stale' | 'disconnected' | 'connecting'
 export type BlockStatus = 'cleared' | 'reshaped' | 'fallback'
 export type HouseState = 'export' | 'import' | 'idle'
 export type Phase = 'A' | 'B' | 'C'
@@ -56,6 +56,10 @@ export interface ScenePayload {
   origin?: { lat: number; lon: number }
   power_factor?: number
   loading_limit?: number
+  /** Number of hourly blocks in this finite simulation run. */
+  total_blocks?: number
+  /** Engine-selected checkpoints; avoids hardcoding a clock with no event. */
+  scenario_blocks?: { battery_dispatch?: number | null }
 }
 
 export interface HouseBlockState {
@@ -64,6 +68,9 @@ export interface HouseBlockState {
   /** null when the premises has no battery. Never a placeholder. */
   soc_frac: number | null
   curtailed: number
+  /** Energy that physically entered or left this premises' battery in this block. */
+  battery_charged_kwh?: number
+  battery_discharged_kwh?: number
 }
 
 export interface TransformerBlockState {
@@ -92,6 +99,14 @@ export interface TradePayload {
   requested_kwh?: number
 }
 
+export interface BatteryDispatchPayload {
+  from: string
+  to: string
+  kwh: number
+  transformer_id: string
+  kind: 'feeder_support'
+}
+
 export interface BlockPayload {
   block: number
   clock: string
@@ -103,7 +118,11 @@ export interface BlockPayload {
   trades: TradePayload[]
   // NEW
   breach?: { transformer_id: string; kind: BreachKind; severity: number } | null
-  battery?: { charged_kwh: number; discharged_kwh: number }
+  battery?: {
+    charged_kwh: number
+    discharged_kwh: number
+    dispatches?: BatteryDispatchPayload[]
+  }
   settlement?: { bill_lines: number; charges_inr: number }
 }
 

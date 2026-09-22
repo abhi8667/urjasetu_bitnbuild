@@ -138,6 +138,12 @@ def block_payload(view, feed, config, soc_by_house: dict[str, float],
             "state": _house_state(net_kwh, config.min_order_kwh),
             "soc_frac": soc,
             "curtailed": round(curtailed_by_house.get(tick.house_id, 0.0), 6),
+            # Per-premises movement lets the UI show the battery that actually
+            # moved and its authoritative post-block state of charge. The UI
+            # must never infer charging from an ordinary P2P trade or animate a
+            # made-up percentage between recorded blocks.
+            "battery_charged_kwh": round(view.battery_stored.get(tick.house_id, 0.0), 4),
+            "battery_discharged_kwh": round(view.battery_discharged.get(tick.house_id, 0.0), 4),
         }
 
     # Transformer state comes from the health agent's own AgeingResult where one
@@ -191,6 +197,45 @@ def block_payload(view, feed, config, soc_by_house: dict[str, float],
         "requested_kwh": round(original_kwh(t), 4),
     } for t in sorted(view.trades, key=lambda t: t.trade_id)]
 
+    # A protection discharge is not an auction trade: it supports the local
+    # transformer by serving demand on the same secondary feeder.  Preserve
+    # that distinction while still exposing source -> recipient attribution so
+    # the digital twin can show where the nighttime battery energy is helping.
+    # Allocation is proportional to the largest importing premises and is a
+    # visual/operational attribution, not a new settlement line.
+    battery_dispatches = []
+    for source_id, discharged in sorted(view.battery_discharged.items()):
+        if discharged <= 1e-9:
+            continue
+        source_house = houses_by_id.get(source_id)
+        if source_house is None:
+            continue
+        recipients = [
+            (hid, state["net_kwh"])
+            for hid, state in house_states.items()
+            if hid != source_id
+            and state["net_kwh"] > config.min_order_kwh
+            and houses_by_id.get(hid) is not None
+            and houses_by_id[hid].transformer_id == source_house.transformer_id
+        ]
+        recipients.sort(key=lambda item: (-item[1], item[0]))
+        recipients = recipients[:3]
+        total_import = sum(kwh for _, kwh in recipients)
+        if total_import <= 1e-9:
+            continue
+        remaining = discharged
+        for index, (recipient_id, importing) in enumerate(recipients):
+            allocated = (remaining if index == len(recipients) - 1 else
+                         discharged * importing / total_import)
+            remaining -= allocated
+            battery_dispatches.append({
+                "from": source_id,
+                "to": recipient_id,
+                "kwh": round(allocated, 4),
+                "transformer_id": source_house.transformer_id,
+                "kind": "feeder_support",
+            })
+
     status = "cleared"
     if view.breach is not None and view.passes > 1:
         status = "reshaped"
@@ -215,6 +260,7 @@ def block_payload(view, feed, config, soc_by_house: dict[str, float],
         "battery": {
             "charged_kwh": round(sum(view.battery_stored.values()), 4),
             "discharged_kwh": round(sum(view.battery_discharged.values()), 4),
+            "dispatches": battery_dispatches,
         },
         "settlement": {
             "bill_lines": len(view.bills),

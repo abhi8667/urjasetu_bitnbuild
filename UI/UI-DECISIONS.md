@@ -57,3 +57,19 @@ clutter. Add overhead view, reset, focus selection, and independent layer toggle
 Verified the new view/layer/focus/reset controls and reduced-motion behavior in
 headless Edge, alongside the existing UI checks. Reviewed overview, mobile,
 overhead, and close-up screenshots. No engine or payload changes.
+
+## Progressive simulation integrity, September 2026
+
+- The streamed recording is presented as a finite simulation, never as present-day
+  field telemetry. The UI labels the playhead as simulated time and shows progress
+  against the run's declared total block count.
+- Telemetry contains observed blocks only. Seeking backwards removes later blocks
+  from the chart and event trace, so cached observations cannot look like a forecast.
+- Full-run economics, governance findings, and briefings remain hidden until the
+  final block. The server may retain and cycle its shared recording, but the client
+  holds the final state until an explicit seek or restart.
+- Battery fill and movement come only from `BatteryBook` snapshots. Per-premises
+  charged/discharged kWh travels in each block payload; the UI does not interpolate
+  state-of-charge, force exporters to 100%, or infer custody from ordinary trades.
+- Structural emoji have been removed in favor of text and the existing SVG icon
+  language.

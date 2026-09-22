@@ -1248,6 +1248,8 @@ a:focus-visible {
 .highlight-adverse { color: #ff4d6d; font-weight: 600; }
 .live-status-pill.offline { opacity: 0.85; }
 .live-status-pill.offline .pulsing-live-dot { background: #ffb703; animation: none; }
+.live-status-pill.complete { color: #cbd5e1; border-color: rgba(203, 213, 225, 0.32); background: rgba(148, 163, 184, 0.12); }
+.live-status-pill.complete .pulsing-live-dot { background: #94a3b8; box-shadow: none; animation: none; }
 
 /* Docked operations layout: activity / city / one selected detail panel. */
 .urjasetu-app { --activity-width: 300px; --detail-width: 400px; }

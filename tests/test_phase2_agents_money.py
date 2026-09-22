@@ -203,6 +203,20 @@ def test_st2_components_always_sum_to_net():
         assert abs(sum(line.components) - line.net_inr) < 1e-9
 
 
+def test_every_buyer_keeps_the_configured_all_in_saving():
+    """Energy savings must survive wheeling, platform fees and GST."""
+    _, _, settlement, _ = _pool_run()
+    houses = {h.house_id: h for h in FEED.houses()}
+    factor = 1.0 - CONFIG.min_consumer_savings_pct / 100.0
+    buyer_lines = [line for line in settlement.ledger if line.role == "buyer"]
+    assert buyer_lines
+    for line in buyer_lines:
+        ceiling = line.quantity_kwh * houses[line.house_id].retail_tariff * factor
+        assert line.net_inr <= ceiling + 1e-6, (
+            f"{line.line_id} costs Rs{line.net_inr:.6f}, above the configured "
+            f"savings ceiling Rs{ceiling:.6f}")
+
+
 def test_st3_a_bill_line_without_a_trade_raises():
     agent = SettlementAgent(FEED.houses(), CONFIG, feed=FEED)
     trade = Trade("T1", 0, "10006", "10000", 1.0, 4.0, 0.0)

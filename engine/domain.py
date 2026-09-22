@@ -240,7 +240,9 @@ class StrategyParams:
     """Set once per simulated day by the LLM layer; these are the LLM-disabled
     defaults, and the engine must run correctly on them (PRD integration check 10)."""
     discount: float = 0.85
-    margin: float = 0.10            # consumer bids retail_tariff * (1 - margin)
+    # Leaves room for wheeling and transaction charges while settlement still
+    # guarantees an all-in saving against the buyer's retail tariff.
+    margin: float = 0.20            # consumer bids retail_tariff * (1 - margin)
     battery_reserve_frac: float = 0.20
     bid_aggression: float = 1.00
 

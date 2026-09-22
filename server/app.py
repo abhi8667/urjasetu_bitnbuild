@@ -285,7 +285,8 @@ async def stream(websocket: WebSocket) -> None:
         await websocket.close(code=1011, reason=str(exc)[:120])
         return
 
-    await websocket.send_text(json.dumps({"type": "scene", "data": sim.scene}))
+    scene = {**sim.scene, "total_blocks": len(sim.blocks)}
+    await websocket.send_text(json.dumps({"type": "scene", "data": scene}))
     await websocket.send_text(json.dumps({"type": "summary", "data": sim.summary}))
 
     events_by_block: dict[int, list[dict]] = {}
@@ -330,7 +331,8 @@ async def stream(websocket: WebSocket) -> None:
                     events_by_block = {}
                     for event in sim.events:
                         events_by_block.setdefault(event["block"], []).append(event)
-                    await websocket.send_text(json.dumps({"type": "scene", "data": sim.scene}))
+                    scene = {**sim.scene, "total_blocks": len(sim.blocks)}
+                    await websocket.send_text(json.dumps({"type": "scene", "data": scene}))
                     await websocket.send_text(json.dumps({
                         "type": "event",
                         "data": {"block": block["block"], "agent": "operator",
@@ -342,7 +344,8 @@ async def stream(websocket: WebSocket) -> None:
                     events_by_block = {}
                     for event in sim.events:
                         events_by_block.setdefault(event["block"], []).append(event)
-                    await websocket.send_text(json.dumps({"type": "scene", "data": sim.scene}))
+                    scene = {**sim.scene, "total_blocks": len(sim.blocks)}
+                    await websocket.send_text(json.dumps({"type": "scene", "data": scene}))
                 elif name == "seek":
                     with contextlib.suppress(TypeError, ValueError):
                         target = int((message.get("args") or {}).get("block", 0))

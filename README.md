@@ -207,7 +207,7 @@ Continuous tracking of top-oil temperature, winding hot-spot rises, loading perc
 ---
 
 ### 5. DISCOM Financial Settlement & Billing Comparison
-Complete 30-day comparative ledger detailing wheeling charges collected, utility revenue delta, household bill savings (+₹12,273 net community savings), and asset replacement deferral.
+Complete 30-day comparative ledger detailing wheeling charges, utility revenue delta, and **₹16,625 lower consumer/community cost** against the configured ₹2.25/kWh export-credit baseline, alongside transformer-life preservation. The alternative one-for-one net-metering sensitivity is also retained and must be labelled when used.
 <p align="center">
   <img src="img/discom-ledger.png" alt="DISCOM Ledger & Grid Comparison" width="95%" style="border-radius: 8px;" />
 </p>

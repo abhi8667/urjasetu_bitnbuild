@@ -218,12 +218,19 @@ function IncidentList({ incidents }: { incidents: Incident[] }) {
   )
 }
 
-function DaySummaryTable({ days }: { days: DayAudit[] }) {
-  const [expanded, setExpanded] = useState<number | null>(null)
-  const [page, setPage] = useState(0)
+function DaySummaryTable({ days, incidents }: { days: DayAudit[]; incidents: Incident[] }) {
+  const latestDay = days[days.length - 1]?.day
+  const [expanded, setExpanded] = useState<number | null>(latestDay ?? null)
+  const [page, setPage] = useState(Math.max(0, Math.ceil(days.length / 7) - 1))
   const PAGE_SIZE = 7
   const totalPages = Math.ceil(days.length / PAGE_SIZE)
   const pageSlice = days.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  useEffect(() => {
+    if (latestDay == null) return
+    setExpanded(latestDay)
+    setPage(Math.max(0, Math.ceil(days.length / PAGE_SIZE) - 1))
+  }, [latestDay, days.length])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -246,6 +253,7 @@ function DaySummaryTable({ days }: { days: DayAudit[] }) {
 
       {pageSlice.map((d) => {
         const isOpen = expanded === d.day
+        const dayIncidents = incidents.filter((incident) => incident.day === d.day)
         const hasCrits = d.critical > 0
         const hasWarns = d.warning > 0
         return (
@@ -269,7 +277,7 @@ function DaySummaryTable({ days }: { days: DayAudit[] }) {
                 {d.critical > 0 && <SevBadge sev="critical" />}
                 {d.warning > 0 && <SevBadge sev="warning" />}
                 {d.info > 0 && <SevBadge sev="info" />}
-                {d.incidents === 0 && <span style={{ fontSize: 10, color: '#10b981' }}>✓ clean</span>}
+                {d.incidents === 0 && <span style={{ fontSize: 10, color: '#10b981' }}>Clean</span>}
               </div>
               <span style={{ flex: 1, fontSize: 11, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {d.headline}
@@ -308,7 +316,7 @@ function DaySummaryTable({ days }: { days: DayAudit[] }) {
                 {/* Settlement & market */}
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
                   <span style={{ color: d.settlement_reconciled ? '#10b981' : '#ef4444' }}>
-                    {d.settlement_reconciled ? '✓ Settled' : '✗ Settlement mismatch'}
+                    {d.settlement_reconciled ? 'Settled' : 'Settlement mismatch'}
                   </span>
                   <span style={{ color: '#94a3b8' }}>
                     {d.blocks_with_trades} trading block{d.blocks_with_trades !== 1 ? 's' : ''}
@@ -324,7 +332,7 @@ function DaySummaryTable({ days }: { days: DayAudit[] }) {
                 {/* Fairness flags */}
                 {d.concentrated_curtailment_houses.length > 0 && (
                   <p style={{ color: '#f59e0b', fontSize: 11 }}>
-                    ⚠ Curtailment concentrated: {d.concentrated_curtailment_houses.join(', ')}
+                    Warning: curtailment concentrated at {d.concentrated_curtailment_houses.join(', ')}
                   </p>
                 )}
                 {d.houses_with_zero_p2p.length > 0 && (
@@ -332,6 +340,32 @@ function DaySummaryTable({ days }: { days: DayAudit[] }) {
                     {d.houses_with_zero_p2p.length} importing house(s) received no P2P energy today.
                   </p>
                 )}
+
+                <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <p style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                    Day {d.day + 1} findings · {dayIncidents.length}
+                  </p>
+                  {dayIncidents.length === 0 ? (
+                    <p style={{ color: '#10b981', fontSize: 11 }}>All governance checks passed for this day.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {dayIncidents.map((incident, index) => (
+                        <div key={`${incident.block}-${incident.rule}-${index}`} style={{
+                          padding: '7px 8px', borderRadius: 5,
+                          background: SEV_BG[incident.severity],
+                          border: `1px solid ${SEV_COLOR[incident.severity]}33`,
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                            <RuleBadge rule={incident.rule} />
+                            <SevBadge sev={incident.severity} />
+                            <span style={{ color: '#64748b', fontSize: 10 }}>{incident.clock} · {incident.subject}</span>
+                          </div>
+                          <p style={{ color: '#e2e8f0', lineHeight: 1.45 }}>{incident.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -487,7 +521,7 @@ function BriefingList({ briefings }: { briefings: Briefing[] }) {
               color: isLLM ? '#bc8aff' : '#00f0ff',
               border: `1px solid ${isLLM ? 'rgba(188,138,255,0.35)' : 'rgba(0,240,255,0.25)'}`,
             }}>
-              {isLLM ? '✦ LLM-enriched' : '⚙ Deterministic template'}
+              {isLLM ? 'LLM-enriched' : 'Deterministic template'}
             </span>
           </div>
 
@@ -503,15 +537,15 @@ function BriefingList({ briefings }: { briefings: Briefing[] }) {
               <SevBadge sev="info" />
             )}
             {current.severity_summary.critical === 0 && current.severity_summary.warning === 0 && (
-              <span style={{ fontSize: 11, color: '#10b981' }}>✓ No critical or warning findings</span>
+              <span style={{ fontSize: 11, color: '#10b981' }}>No critical or warning findings</span>
             )}
           </div>
 
           {/* Three questions */}
           {[
-            { label: '📌 What changed today?', text: current.what_changed, color: '#00f0ff' },
-            { label: '⚠ What needs attention?', text: current.needs_attention, color: '#f59e0b' },
-            { label: '✅ Recommended action', text: current.recommendation, color: '#10b981' },
+            { label: 'What changed today?', text: current.what_changed, color: '#00f0ff' },
+            { label: 'What needs attention?', text: current.needs_attention, color: '#f59e0b' },
+            { label: 'Recommended action', text: current.recommendation, color: '#10b981' },
           ].map(({ label, text, color }) => (
             <div key={label} style={{
               background: 'rgba(255,255,255,0.04)',
@@ -564,16 +598,23 @@ type PanelTab = 'incidents' | 'days' | 'fairness' | 'briefings'
 
 interface GovernancePanelProps {
   onClose: () => void
+  available: boolean
+  currentDay: number
+  runComplete: boolean
 }
 
-export function GovernancePanel({ onClose }: GovernancePanelProps) {
-  const [tab, setTab] = useState<PanelTab>('incidents')
+export function GovernancePanel({ onClose, available, currentDay, runComplete }: GovernancePanelProps) {
+  const [tab, setTab] = useState<PanelTab>('days')
   const [governance, setGovernance] = useState<GovernanceData | null>(null)
   const [briefings, setBriefings] = useState<Briefing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!available) {
+      setLoading(false)
+      return
+    }
     let cancelled = false
     setLoading(true)
     setError(null)
@@ -599,17 +640,38 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
       })
 
     return () => { cancelled = true }
-  }, [])
+  }, [available])
+
+  // The server holds the completed deterministic audit, but the operator must
+  // only see findings that have occurred at or behind the current playhead.
+  const visibleDays = useMemo(
+    () => governance?.days.filter((day) => day.day <= currentDay) ?? [],
+    [governance, currentDay],
+  )
+  const visibleIncidents = useMemo(
+    () => governance?.incidents.filter((incident) => incident.day <= currentDay) ?? [],
+    [governance, currentDay],
+  )
+  const visibleBriefings = useMemo(
+    () => briefings.filter((briefing) => briefing.day <= currentDay),
+    [briefings, currentDay],
+  )
+  const visibleSummary = useMemo(() => ({
+    total_incidents: visibleIncidents.length,
+    critical: visibleIncidents.filter((incident) => incident.severity === 'critical').length,
+    warning: visibleIncidents.filter((incident) => incident.severity === 'warning').length,
+    info: visibleIncidents.filter((incident) => incident.severity === 'info').length,
+  }), [visibleIncidents])
 
   const TAB_DEFS: Array<{ id: PanelTab; label: string; count?: number }> = [
     {
       id: 'incidents',
-      label: 'Incident Trail',
-      count: governance?.summary.total_incidents,
+      label: 'All Findings',
+      count: visibleSummary.total_incidents,
     },
-    { id: 'days', label: 'Day Summaries', count: governance?.days.length },
+    { id: 'days', label: 'Daily Governance', count: visibleDays.length },
     { id: 'fairness', label: 'Fairness' },
-    { id: 'briefings', label: 'Ops Briefings', count: briefings.length },
+    { id: 'briefings', label: 'Ops Briefings', count: visibleBriefings.length },
   ]
 
   return (
@@ -635,7 +697,7 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
       }}
     >
       {/* Header */}
-      <div style={{
+      {available && <div style={{
         display: 'flex', alignItems: 'center', padding: '12px 16px',
         borderBottom: '1px solid rgba(255,255,255,0.08)',
         background: 'rgba(255,255,255,0.03)',
@@ -651,19 +713,19 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
           </h3>
           {governance && (
             <div style={{ display: 'flex', gap: 5, marginLeft: 8 }}>
-              {governance.summary.critical > 0 && (
+              {visibleSummary.critical > 0 && (
                 <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}>
-                  {governance.summary.critical} critical
+                  {visibleSummary.critical} critical
                 </span>
               )}
-              {governance.summary.warning > 0 && (
+              {visibleSummary.warning > 0 && (
                 <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)' }}>
-                  {governance.summary.warning} warnings
+                  {visibleSummary.warning} warnings
                 </span>
               )}
-              {governance.summary.critical === 0 && governance.summary.warning === 0 && (
+              {visibleSummary.critical === 0 && visibleSummary.warning === 0 && (
                 <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: 'rgba(16,185,129,0.12)', color: '#10b981', border: '1px solid rgba(16,185,129,0.25)' }}>
-                  ✓ No critical findings
+                  No critical findings
                 </span>
               )}
             </div>
@@ -677,8 +739,8 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
             background: 'rgba(255,255,255,0.06)', color: '#94a3b8', fontSize: 14, cursor: 'pointer',
             border: '1px solid rgba(255,255,255,0.1)',
           }}
-        >✕</button>
-      </div>
+        >×</button>
+      </div>}
 
       {/* Tab bar */}
       <div style={{
@@ -715,7 +777,12 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
 
       {/* Body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
-        {loading && (
+        {!available && (
+          <div style={{ padding: 24, color: '#94a3b8', fontSize: 13, lineHeight: 1.6 }}>
+            Governance begins when the first simulated day is available.
+          </div>
+        )}
+        {available && loading && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32, color: '#64748b', fontSize: 13 }}>
             <div style={{
               width: 16, height: 16, borderRadius: '50%',
@@ -727,7 +794,7 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
           </div>
         )}
 
-        {!loading && error && (
+        {available && !loading && error && (
           <div style={{
             padding: '14px', borderRadius: 6,
             background: 'rgba(239,68,68,0.1)',
@@ -743,19 +810,23 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
           </div>
         )}
 
-        {!loading && !error && governance && (
+        {available && !loading && !error && governance && (
           <>
             {tab === 'incidents' && (
-              <IncidentList incidents={governance.incidents} />
+              <IncidentList incidents={visibleIncidents} />
             )}
             {tab === 'days' && (
-              <DaySummaryTable days={governance.days} />
+              <DaySummaryTable days={visibleDays} incidents={visibleIncidents} />
             )}
             {tab === 'fairness' && (
-              <FairnessTable fairness={governance.fairness} />
+              runComplete
+                ? <FairnessTable fairness={governance.fairness} />
+                : <p style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.6 }}>
+                    Cross-day fairness is published when the finite run completes. Daily findings remain available above without revealing future blocks.
+                  </p>
             )}
             {tab === 'briefings' && (
-              <BriefingList briefings={briefings} />
+              <BriefingList briefings={visibleBriefings} />
             )}
           </>
         )}
@@ -774,12 +845,12 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
       }}>
         <span>
           All audit findings are rule-based and deterministic (GC-01–GC-12).
-          Ops briefings are {briefings[0]?.mode === 'llm' ? 'LLM-enriched' : 'deterministic template'}.
+          Ops briefings are {visibleBriefings[0]?.mode === 'llm' ? 'LLM-enriched' : 'deterministic template'}.
         </span>
         {governance && (
           <span>
-            {governance.summary.total_incidents} finding{governance.summary.total_incidents !== 1 ? 's' : ''} ·{' '}
-            {governance.days.length} day{governance.days.length !== 1 ? 's' : ''}
+            {visibleSummary.total_incidents} finding{visibleSummary.total_incidents !== 1 ? 's' : ''} ·{' '}
+            {visibleDays.length} day{visibleDays.length !== 1 ? 's' : ''}
           </span>
         )}
       </div>

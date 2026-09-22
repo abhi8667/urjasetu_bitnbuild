@@ -21,16 +21,12 @@ Three things this file used to get wrong:
     from THIS block's own load. That is retroactive pricing and breaks HL4.
     It reads `active_adders` (computed in t-1) now — see engine/domain.py.
 
-CHARGE-STACK CAP. Adding the platform fee and GST puts real pressure on CN2,
-which says a buyer's all-in cost may never exceed what the DISCOM would have
-charged. CN1 guarantees the ENERGY price is below retail; it says nothing about
-energy plus six charges. Rather than let CN2 fire in the middle of a run — it is
-an assertion, it would stop the run, and the fault would not be in the bidding —
-the stack is capped explicitly, and the ageing adder is what gives way. That is
-the right term to trim: it is the discretionary price signal, not a statutory
-charge, and `max_ageing_adder` already exists because the signal is understood
-to need bounding. Every trim is recorded in `adder_trimmed_inr` so the cap can
-never quietly hide a settlement bug.
+CONSUMER-SAVINGS FLOOR. A P2P trade that merely ties retail after charges does
+not achieve the product goal. The buyer therefore keeps a configured minimum
+all-in saving. The ageing adder yields first, followed by the platform fee;
+wheeling and transaction charges remain visible and untouched. If those fixed
+costs alone cannot meet the floor, settlement raises instead of manufacturing a
+discount. Every trim is recorded, so the policy cannot hide a settlement bug.
 """
 from __future__ import annotations
 
@@ -55,6 +51,7 @@ class SettlementAgent:
         #: How much ageing adder the CN2 cap gave back, in rupees. Nonzero means
         #: the charge stack is pressing against retail on this street.
         self.adder_trimmed_inr = 0.0
+        self.platform_trimmed_inr = 0.0
         #: Claim ids already billed a storage fee, so a claim that stays open
         #: across blocks is not charged twice.
         self._settled_claims: set[str] = set()
@@ -95,21 +92,48 @@ class SettlementAgent:
             # adder (a wear recovery, not a service). Stated here because the
             # base of a tax is a policy choice and leaving it implicit in an
             # expression is how it gets silently changed.
-            taxable = wheeling + transaction_half + platform
-            gst = taxable * cfg.gst_pct / 100.0
+            def _gst(platform_inr: float) -> float:
+                taxable = wheeling + transaction_half + platform_inr
+                return taxable * cfg.gst_pct / 100.0
 
-            # CN2 cap — see the module docstring. The buyer's all-in must stay at
-            # or below what this much DELIVERED energy would have cost from the
-            # grid, and the ageing adder is the term that yields.
+            gst = _gst(platform)
+
+            # The buyer receives a real all-in discount, not just an energy-rate
+            # discount erased by the charge stack. Discretionary charges yield
+            # in a deterministic order; statutory charges do not.
             house = self.houses.get(trade.buyer_id)
             if house is not None:
-                ceiling = delivered * house.retail_tariff
+                saving = 1.0 - cfg.min_consumer_savings_pct / 100.0
+                ceiling = delivered * house.retail_tariff * saving
                 fixed = (energy + transaction_half + wheeling + cross_subsidy
                          + platform + gst)
-                allowed_adder = ceiling - fixed
+                allowed_adder = max(0.0, ceiling - fixed)
                 if ageing_inr > allowed_adder:
-                    self.adder_trimmed_inr += ageing_inr - max(0.0, allowed_adder)
-                    ageing_inr = max(0.0, allowed_adder)
+                    self.adder_trimmed_inr += ageing_inr - allowed_adder
+                    ageing_inr = allowed_adder
+
+                total = fixed + ageing_inr
+                if total > ceiling + 1e-9 and platform > 0.0:
+                    old_platform = platform
+                    # GST falls with the platform service fee. Solve the exact
+                    # affordable platform amount rather than iterating.
+                    base = (energy + transaction_half + wheeling + cross_subsidy
+                            + ageing_inr)
+                    gst_rate = cfg.gst_pct / 100.0
+                    fixed_taxable = wheeling + transaction_half
+                    affordable = ((ceiling - base - gst_rate * fixed_taxable)
+                                  / (1.0 + gst_rate))
+                    platform = max(0.0, min(platform, affordable))
+                    self.platform_trimmed_inr += old_platform - platform
+                    gst = _gst(platform)
+
+                fixed_total = (energy + transaction_half + wheeling
+                               + cross_subsidy + platform + gst + ageing_inr)
+                if fixed_total > ceiling + 1e-6:
+                    raise InvariantError(
+                        f"CN3: fixed charge stack Rs{fixed_total:.6f} cannot "
+                        f"deliver the configured {cfg.min_consumer_savings_pct:.2f}% "
+                        f"saving under ceiling Rs{ceiling:.6f}")
 
             buyer_net = (energy + transaction_half + wheeling + cross_subsidy
                          + platform + gst + ageing_inr)
@@ -168,6 +192,7 @@ class SettlementAgent:
                 "bill_lines": len(lines),
                 "charges_collected_inr": round(collected, 6),
                 "adder_trimmed_inr": round(self.adder_trimmed_inr, 6),
+                "platform_trimmed_inr": round(self.platform_trimmed_inr, 6),
             })
         return lines
 

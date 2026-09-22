@@ -40,7 +40,9 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
   }, [onClose])
 
   // Use history or fallback to at least 24 points based on the current run
-  const dataPoints = history.length > 0 ? history : currentBlock ? [currentBlock] : []
+  const dataPoints = (history.length > 0 ? history : currentBlock ? [currentBlock] : [])
+    .filter((point) => currentBlock == null || point.block <= currentBlock.block)
+    .sort((a, b) => a.block - b.block)
 
   // Expanded chart dimensions with generous widescreen headroom
   const width = 1440
@@ -133,13 +135,13 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Real-time grid telemetry and load dynamics"
+        aria-label="Observed simulation telemetry and load dynamics"
       >
         <div className="telemetry-header">
           <div className="telemetry-title-group">
             <span className="telemetry-pulse-dot" />
-            <h3>REAL-TIME GRID TELEMETRY &amp; LOAD DYNAMICS</h3>
-            <span className="telemetry-tag">IEEE C57.91 &amp; P2P Market</span>
+            <h3>SIMULATION TELEMETRY &amp; LOAD DYNAMICS</h3>
+            <span className="telemetry-tag">Observed blocks only · IEEE C57.91</span>
           </div>
           <div className="telemetry-controls-group">
             <div className="telemetry-legend">
@@ -159,7 +161,7 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
               </span>
             </div>
             <button className="telemetry-close-btn" onClick={onClose} title="Close Graph (G or Esc)" aria-label="Close">
-              ✕
+              ×
             </button>
           </div>
         </div>
@@ -167,7 +169,7 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
       {/* Snapshot Cards */}
       <div className="telemetry-stats-row">
         <div className="telemetry-stat-card">
-          <span className="stat-name">Active Time</span>
+          <span className="stat-name">Simulation Playhead</span>
           <strong className="stat-highlight">{activeOrHovered?.clock ?? '—'}</strong>
           <small>Block #{activeOrHovered?.block ?? 0}</small>
         </div>
@@ -180,7 +182,7 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
             {worstDt ? `${Math.round(worstDt.loading * 100)}%` : '—'}
           </strong>
           <small>
-            {!worstDt ? 'No reading' : worstDt.loading > 1.0 ? '⚠️ Overload Breach' : 'Nominal'}
+            {!worstDt ? 'No reading' : worstDt.loading > 1.0 ? 'Overload breach' : 'Nominal'}
           </small>
         </div>
         <div className="telemetry-stat-card">
@@ -445,7 +447,7 @@ export const TelemetryGraph: React.FC<TelemetryGraphProps> = ({
 
       <div className="telemetry-footer">
         <span className="footer-hint">
-          💡 Click anywhere on the timeline to seek to that block · Solid lines: Transformer Load · Dashed: Clearing Price (₹/kWh)
+          Click an observed point to return to that block · Solid: transformer load · Dashed: clearing price (₹/kWh)
         </span>
         <span className="footer-status">
           Sentinel: <strong className="green-text">Autonomous Active</strong> · Flow Agent: <strong className="green-text">LP Armed</strong>

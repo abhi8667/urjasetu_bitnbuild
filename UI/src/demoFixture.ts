@@ -42,6 +42,8 @@ function makeScene(): ScenePayload {
         y: 0,
         has_pv: numericId % 3 === 0 || numericId % 11 === 0,
         has_battery: numericId % 8 === 0,
+        battery_kwh: numericId % 8 === 0 ? 8 + (numericId % 3) * 2 : 0,
+        battery_max_kw: numericId % 8 === 0 ? 3.3 : 0,
         kind: 'premise',
       })
       numericId += 1
@@ -67,6 +69,12 @@ function makeScene(): ScenePayload {
 
 function clockFor(block: number) {
   return `${String(block % 24).padStart(2, '0')}:00`
+}
+
+function batterySocForHour(hour: number) {
+  const solar = Math.max(0, Math.sin(((hour - 6) / 12) * Math.PI))
+  const evening = Math.exp(-Math.pow((hour - 19) / 2.6, 2))
+  return Math.max(0.12, Math.min(0.95, 0.30 + solar * 0.56 - evening * 0.20))
 }
 
 function makeTrades(
@@ -108,11 +116,17 @@ function makeBlock(scene: ScenePayload, block: number): BlockPayload {
     const baseLoad = house.kind === 'evhub' ? 5.8 + evening * 4.2 : 0.7 + evening * 1.8 + rng() * 0.6
     const generation = house.has_pv ? solar * (2.8 + (index % 4) * 0.7) : 0
     const net = baseLoad - generation
+    const soc = batterySocForHour(hour)
+    const previousSoc = batterySocForHour((hour + 23) % 24)
+    const capacity = house.battery_kwh ?? 0
+    const storedDelta = house.has_battery ? (soc - previousSoc) * capacity : 0
     houses[house.id] = {
       net_kwh: Number(net.toFixed(2)),
       state: Math.abs(net) < 0.18 ? 'idle' : net < 0 ? 'export' : 'import',
-      soc_frac: house.has_battery ? Number((0.28 + solar * 0.52 - evening * 0.18 + rng() * 0.08).toFixed(2)) : null,
+      soc_frac: house.has_battery ? Number(soc.toFixed(3)) : null,
       curtailed: 0,
+      battery_charged_kwh: Number(Math.max(0, storedDelta).toFixed(2)),
+      battery_discharged_kwh: Number(Math.max(0, -storedDelta).toFixed(2)),
     }
   })
 
@@ -131,6 +145,23 @@ function makeBlock(scene: ScenePayload, block: number): BlockPayload {
   trades.forEach((trade) => {
     if (trade.curtailed > 0) houses[trade.from].curtailed = trade.curtailed
   })
+  const dispatches = scene.houses.flatMap((source) => {
+    const discharged = houses[source.id]?.battery_discharged_kwh ?? 0
+    if (discharged <= 0) return []
+    const recipients = scene.houses
+      .filter((candidate) => candidate.id !== source.id && candidate.transformer === source.transformer)
+      .filter((candidate) => (houses[candidate.id]?.net_kwh ?? 0) > 0.1)
+      .sort((a, b) => (houses[b.id]?.net_kwh ?? 0) - (houses[a.id]?.net_kwh ?? 0))
+      .slice(0, 3)
+    const demand = recipients.reduce((sum, recipient) => sum + (houses[recipient.id]?.net_kwh ?? 0), 0)
+    return demand <= 0 ? [] : recipients.map((recipient) => ({
+      from: source.id,
+      to: recipient.id,
+      kwh: Number((discharged * (houses[recipient.id]?.net_kwh ?? 0) / demand).toFixed(2)),
+      transformer_id: source.transformer,
+      kind: 'feeder_support' as const,
+    }))
+  })
 
   return {
     block,
@@ -141,6 +172,11 @@ function makeBlock(scene: ScenePayload, block: number): BlockPayload {
     houses,
     transformers,
     trades,
+    battery: {
+      charged_kwh: Number(Object.values(houses).reduce((sum, h) => sum + (h.battery_charged_kwh ?? 0), 0).toFixed(2)),
+      discharged_kwh: Number(Object.values(houses).reduce((sum, h) => sum + (h.battery_discharged_kwh ?? 0), 0).toFixed(2)),
+      dispatches,
+    },
   }
 }
 
@@ -165,12 +201,16 @@ function eventsFor(block: BlockPayload): EventPayload[] {
 export function createDemoRun(baseScene?: ScenePayload): DemoRun {
   const scene = baseScene && baseScene.houses.some(h => h.x !== 0 || h.y !== 0) ? baseScene : makeScene()
   const blocks = Array.from({ length: 72 }, (_, block) => makeBlock(scene, block))
+  scene.total_blocks = blocks.length
+  scene.scenario_blocks = {
+    battery_dispatch: blocks.find((block) => (block.battery?.dispatches?.length ?? 0) > 0)?.block ?? null,
+  }
   return {
     scene,
     blocks,
     events: blocks.flatMap(eventsFor),
     summary: {
-      days: 30,
+      days: blocks.length / scene.blocks_per_day,
       houses: scene.houses.length,
       transformers: scene.transformers.length,
       householdBillBaseline: 1840,

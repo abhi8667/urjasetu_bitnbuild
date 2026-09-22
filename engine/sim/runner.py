@@ -744,6 +744,8 @@ class _Accumulator:
             # reason about.
             summary["ageing_adder_trimmed_inr"] = round(
                 getattr(settlement, "adder_trimmed_inr", 0.0), 6)
+            summary["platform_fee_trimmed_inr"] = round(
+                getattr(settlement, "platform_trimmed_inr", 0.0), 6)
 
         if health is not None:
             life = getattr(health, "_cumulative_life_hours", {})

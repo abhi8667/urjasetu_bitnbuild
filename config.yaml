@@ -1,4 +1,4 @@
-baseline_export_credit: one_for_one
+baseline_export_credit: feed_in
 battery_max_kw: 5.0
 block_minutes: 60
 credit_carryforward_blocks: 8760
@@ -29,6 +29,7 @@ risk_training_days: 14
 loading_limit: 1.0
 max_ageing_adder: 2.0
 max_bid_kwh_per_block: 3.0
+min_consumer_savings_pct: 5.0
 min_order_kwh: 0.1
 phase_limit: 1.15
 platform_fee: 0.25

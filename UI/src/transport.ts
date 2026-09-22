@@ -49,7 +49,13 @@ export class ReplayTransport implements Transport {
       this.emitCurrent()
     })
     this.timer = window.setInterval(() => {
-      this.index = (this.index + 1) % this.run.blocks.length
+      if (this.index >= this.run.blocks.length - 1) {
+        if (this.timer !== null) window.clearInterval(this.timer)
+        this.timer = null
+        this.statusSignal.emit('complete')
+        return
+      }
+      this.index += 1
       this.emitCurrent()
     }, this.cadenceMs)
   }
@@ -66,6 +72,7 @@ export class ReplayTransport implements Transport {
     const nextIndex = this.run.blocks.findIndex((item) => item.block === block)
     if (nextIndex < 0) throw new Error(`Block ${block} is not in this replay`)
     this.index = nextIndex
+    this.statusSignal.emit('replay')
     this.emitCurrent()
   }
 
@@ -139,6 +146,8 @@ export class EngineTransport implements Transport {
   private reconnectTimer: number | null = null
   private staleTimer: number | null = null
   private lastBlock = STREAM_START_BLOCK
+  private totalBlocks: number | null = null
+  private completed = false
   private readonly sceneSignal = new Signal<ScenePayload>()
   private readonly blockSignal = new Signal<BlockPayload>()
   private readonly eventSignal = new Signal<EventPayload>()
@@ -165,6 +174,8 @@ export class EngineTransport implements Transport {
 
   command(name: string, args: Record<string, unknown>) {
     if (this.socket?.readyState === WebSocket.OPEN) {
+      this.completed = false
+      this.statusSignal.emit('live')
       this.socket.send(JSON.stringify({ type: 'command', name, args }))
     }
   }
@@ -173,6 +184,8 @@ export class EngineTransport implements Transport {
     if (this.socket?.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected to the engine')
     }
+    this.completed = false
+    this.statusSignal.emit('live')
     this.socket.send(JSON.stringify({ type: 'command', name: 'seek', args: { block } }))
   }
 
@@ -217,14 +230,29 @@ export class EngineTransport implements Transport {
         })
         return
       }
-      if (payload.type === 'scene') this.sceneSignal.emit(payload.data as ScenePayload)
+      if (payload.type === 'scene') {
+        const scene = payload.data as ScenePayload
+        this.totalBlocks = scene.total_blocks ?? null
+        this.sceneSignal.emit(scene)
+      }
       if (payload.type === 'summary') this.summarySignal.emit(payload.data as RunSummary)
       if (payload.type === 'block') {
         const block = payload.data as BlockPayload
+        // The server keeps its shared recording available by cycling. A viewer
+        // sees one finite run: once its declared final block arrives, hold that
+        // result until the user explicitly seeks or restarts.
+        if (this.completed) return
         this.lastBlock = block.block
         this.blockSignal.emit(block)
+        if (this.totalBlocks != null && block.block >= this.totalBlocks - 1) {
+          this.completed = true
+          this.statusSignal.emit('complete')
+        }
       }
-      if (payload.type === 'event') this.eventSignal.emit(payload.data as EventPayload)
+      if (payload.type === 'event') {
+        const event = payload.data as EventPayload
+        if (!this.completed || event.block === this.lastBlock) this.eventSignal.emit(event)
+      }
     }
 
     socket.onerror = () => { /* onclose follows; handled there */ }

@@ -47,6 +47,14 @@ const simDate = (dayOffset: number | undefined) => {
   })
 }
 
+/** Keep only observations at or behind the playhead. A seek, reconnect, or a
+ *  new run can move the playhead backwards; retaining later blocks makes the
+ *  telemetry chart appear to predict the future. */
+const mergeObservedHistory = (current: BlockPayload[], next: BlockPayload) => {
+  const observed = current.filter((item) => item.block <= next.block && item.block !== next.block)
+  return [...observed, next].sort((a, b) => a.block - b.block).slice(-48)
+}
+
 function useGridTransport() {
   // Kept only as the offline fallback. Everything in it is invented in
   // TypeScript, so it must never be what the app opens on when an engine is
@@ -107,15 +115,8 @@ function useGridTransport() {
           return true
         })
         setBlock(next)
-        setHistory((current) => {
-          const idx = current.findIndex((b) => b.block === next.block)
-          if (idx >= 0) {
-            const copy = [...current]
-            copy[idx] = next
-            return copy
-          }
-          return [...current.slice(-47), next]
-        })
+        setHistory((current) => mergeObservedHistory(current, next))
+        setEvents((current) => current.filter((event) => event.block < 0 || event.block <= next.block))
       }),
       transport.onEvent((event) => setEvents((current) => [...current, event].slice(-50))),
       transport.onStatus(setStatus),
@@ -271,85 +272,11 @@ function CityApp() {
   const showAgentNetwork = detailPanel === 'agents'
   const [isNightMode, setIsNightMode] = useState(true)
   const [showTelemetryGraph, setShowTelemetryGraph] = useState(false)
-  const [custodyHighlight, setCustodyHighlight] = useState<{ from: string; to: string; kwh: number } | null>(null)
-  // Live dynamic battery charging state: increases in real-time as power transfers into host
-  const [custodyChargePct, setCustodyChargePct] = useState(82)
+  const [batteryScenarioTarget, setBatteryScenarioTarget] = useState<number | null>(null)
 
   // View Mode: 'modal' (launch choice), 'demo' (cinematic tour), or 'free' (free operator cockpit)
   const [viewMode, setViewMode] = useState<'modal' | 'demo' | 'free'>('modal')
   const [tourStepIndex, setTourStepIndex] = useState(-1) // -1 = blackout, 0 = splash, 1..9 = scenes
-
-  useEffect(() => {
-    if (!custodyHighlight) {
-      setCustodyChargePct(82)
-      return
-    }
-    // Live charging simulation: increments battery percentage live every 1.2s as energy transfers
-    const interval = setInterval(() => {
-      setCustodyChargePct((prev) => {
-        if (prev >= 98) return 82 // loops smoothly or tops off
-        return prev + 1
-      })
-    }, 1200)
-    return () => clearInterval(interval)
-  }, [custodyHighlight])
-
-  // Augmented block ensuring 100% battery fill during custody scenarios and for all electricity-sharing houses
-  const effectiveBlock = useMemo(() => {
-    if (!block) return null
-
-    // Determine houses actively sharing electricity or receiving battery custody
-    const sharingHouseIds = new Set<string>()
-    if (custodyHighlight) {
-      sharingHouseIds.add(custodyHighlight.from)
-    }
-    block.trades.forEach((t) => {
-      sharingHouseIds.add(t.from)
-    })
-    Object.entries(block.houses).forEach(([id, h]) => {
-      if (h.state === 'export' || h.net_kwh < -0.05) {
-        sharingHouseIds.add(id)
-      }
-    })
-
-    const receivingCustodyIds = new Set<string>()
-    if (custodyHighlight) {
-      const targetH = scene?.houses.find((h) => h.id === custodyHighlight.to)
-      if (targetH?.has_battery) {
-        receivingCustodyIds.add(custodyHighlight.to)
-      }
-    }
-    block.trades.forEach((t) => {
-      const targetH = scene?.houses.find((h) => h.id === t.to)
-      if (targetH?.has_battery) {
-        receivingCustodyIds.add(t.to)
-      }
-    })
-
-    const updatedHouses = { ...block.houses }
-
-    sharingHouseIds.forEach((id) => {
-      updatedHouses[id] = {
-        ...(updatedHouses[id] ?? { net_kwh: 4.8, state: 'export', curtailed: 0 }),
-        soc_frac: 1.0, // Exactly 100% Full because surplus is being shared
-        state: 'export' as const,
-      }
-    })
-
-    receivingCustodyIds.forEach((id) => {
-      const liveSoc = custodyHighlight?.to === id ? custodyChargePct / 100 : Math.max(0.85, updatedHouses[id]?.soc_frac ?? 0.85)
-      updatedHouses[id] = {
-        ...(updatedHouses[id] ?? { net_kwh: -4.8, state: 'import', curtailed: 0 }),
-        soc_frac: liveSoc, // Actively Absorbing & charging live
-        state: 'import' as const,
-      }
-    })
-
-    return {
-      ...block,
-      houses: updatedHouses,
-    }
-  }, [block, custodyHighlight, scene, custodyChargePct])
 
   // Open inspector automatically if a node is clicked in 3D
   const handleSelectNode = useCallback((id: string | null) => {
@@ -360,26 +287,31 @@ function CityApp() {
     }
   }, [])
 
-  const triggerCustodyScenario = useCallback(() => {
-    const pvHouse =
-      scene?.houses.find((h) => h.has_pv && h.has_battery) ??
-      scene?.houses.find((h) => h.id === '10006') ??
-      scene?.houses[0]
-    const battHouse =
-      scene?.houses.find((h) => Boolean(h.has_battery) && (h.battery_kwh ?? 0) > 0 && h.id !== pvHouse?.id) ??
-      scene?.houses.find((h) => Boolean(h.has_battery) && h.id !== pvHouse?.id) ??
-      scene?.houses.find((h) => h.id === '20018') ??
-      scene?.houses.find((h) => h.id === '20020')
-    if (pvHouse && battHouse) {
-      seek(11)
-      setCustodyHighlight({ from: pvHouse.id, to: battHouse.id, kwh: 4.8 })
-      handleSelectNode(pvHouse.id)
-    }
-  }, [scene, seek, handleSelectNode])
+  // A scenario may jump the playhead, but it never invents an intermediate
+  // battery state. Select the battery that actually moved in the resulting
+  // engine block so its recorded state-of-charge is visible in the inspector.
+  useEffect(() => {
+    if (batteryScenarioTarget == null || !block || !scene || block.block !== batteryScenarioTarget) return
+    const active = scene.houses
+      .filter((house) => house.has_battery)
+      .sort((a, b) => {
+        const aState = block.houses[a.id]
+        const bState = block.houses[b.id]
+        const aMoved = (aState?.battery_charged_kwh ?? 0) + (aState?.battery_discharged_kwh ?? 0)
+        const bMoved = (bState?.battery_charged_kwh ?? 0) + (bState?.battery_discharged_kwh ?? 0)
+        return bMoved - aMoved
+      })[0]
+    if (active) handleSelectNode(active.id)
+    setBatteryScenarioTarget(null)
+  }, [batteryScenarioTarget, block, scene, handleSelectNode])
 
-  const resetScenarios = useCallback(() => {
-    setCustodyHighlight(null)
-  }, [])
+  const triggerCustodyScenario = useCallback(() => {
+    const target = scene?.scenario_blocks?.battery_dispatch ?? 42
+    setBatteryScenarioTarget(target)
+    seek(target)
+  }, [scene, seek])
+
+  const resetScenarios = useCallback(() => setBatteryScenarioTarget(null), [])
 
   // Keyboard controls
   useEffect(() => {
@@ -413,7 +345,6 @@ function CityApp() {
         // close button and no keyboard way out.
         case 'escape':
           if (showTelemetryGraph) setShowTelemetryGraph(false)
-          else if (custodyHighlight) setCustodyHighlight(null)
           else setDetailPanel(null)
           break
       }
@@ -422,7 +353,7 @@ function CityApp() {
     return () => window.removeEventListener('keydown', onKey)
     // `reconnect` was missing here, so the 'L' shortcut kept calling the
     // reconnect closure captured on the first render.
-  }, [command, replay, reconnect, status, showTelemetryGraph, custodyHighlight, viewMode])
+  }, [command, replay, reconnect, status, showTelemetryGraph, viewMode])
 
   // Computed metrics for HUD
   // Traded energy this block, as traded. The old version added a literal 140
@@ -490,34 +421,10 @@ function CityApp() {
 
   // Selected house details
   const selectedHouse = scene?.houses.find((h) => h.id === selectedNode)
-  const selectedReading = selectedNode ? effectiveBlock?.houses[selectedNode] : null
+  const selectedReading = selectedNode ? block?.houses[selectedNode] : null
 
-  // Check if selected house is actively sharing electricity (in trades, export state, or custody)
-  const isSharingElectricity = useMemo(() => {
-    if (!selectedHouse) return false
-    if (custodyHighlight?.from === selectedHouse.id) return true
-    if (effectiveBlock?.trades?.some((t) => t.from === selectedHouse.id)) return true
-    const h = effectiveBlock?.houses[selectedHouse.id]
-    if (h && (h.state === 'export' || h.net_kwh < -0.05 || h.soc_frac === 1.0)) return true
-    return false
-  }, [selectedHouse, custodyHighlight, effectiveBlock])
-
-  // Check if selected house is receiving battery custody from another prosumer (strictly requires local battery)
-  const custodyTrade = useMemo(() => {
-    if (!selectedHouse || !selectedHouse.has_battery) return null
-    if (custodyHighlight?.to === selectedHouse.id) {
-      return { from: custodyHighlight.from, to: custodyHighlight.to, kwh: custodyHighlight.kwh }
-    }
-    const trade = effectiveBlock?.trades?.find(
-      (t) => t.to === selectedHouse.id && Boolean(selectedHouse.has_battery)
-    )
-    if (trade) {
-      return { from: trade.from, to: trade.to, kwh: trade.kwh }
-    }
-    return null
-  }, [selectedHouse, custodyHighlight, effectiveBlock])
-
-  const isReceivingCustody = Boolean(custodyTrade && selectedHouse?.has_battery)
+  const batteryChargedKwh = selectedReading?.battery_charged_kwh ?? 0
+  const batteryDischargedKwh = selectedReading?.battery_discharged_kwh ?? 0
 
   return (
     <div className={`urjasetu-app ${isNightMode ? 'theme-night' : 'theme-evening'} ${detailPanel ? 'has-detail-panel' : ''}`}>
@@ -525,13 +432,12 @@ function CityApp() {
       {scene ? (
         <City3D
           scene={scene}
-          block={effectiveBlock}
+          block={block}
           selected={selectedNode}
           onSelect={handleSelectNode}
           cameraMode={cameraMode}
           onCameraModeChange={setCameraMode}
           isNightMode={isNightMode}
-          custodyHighlight={custodyHighlight}
         />
       ) : (
         <div className="scene-loader" role="status" aria-live="polite">
@@ -657,7 +563,7 @@ function CityApp() {
             }}
             title="Switch between Guided Presentation Demo and Free View"
           >
-            <span>{viewMode === 'demo' ? '🎮 Free View' : '🎬 Demo Tour'}</span>
+            <span>{viewMode === 'demo' ? 'Free View' : 'Guided Tour'}</span>
           </button>
 
           {/* Curated Demo Scenarios Dropdown */}
@@ -669,38 +575,18 @@ function CityApp() {
               onChange={(e) => {
                 const val = e.target.value
                 if (val === 'solar-peak') {
-                  setCustodyHighlight(null)
                   seek(10)
                 } else if (val === 'battery-custody') {
-                  const pvHouse =
-                    scene?.houses.find((h) => h.has_pv && h.has_battery) ??
-                    scene?.houses.find((h) => h.id === '10006') ??
-                    scene?.houses[0]
-                  // Target MUST strictly have a physical battery installed
-                  const battHouse =
-                    scene?.houses.find((h) => Boolean(h.has_battery) && (h.battery_kwh ?? 0) > 0 && h.id !== pvHouse?.id) ??
-                    scene?.houses.find((h) => Boolean(h.has_battery) && h.id !== pvHouse?.id) ??
-                    scene?.houses.find((h) => h.id === '20018') ??
-                    scene?.houses.find((h) => h.id === '20020')
-                  if (pvHouse && battHouse) {
-                    seek(11)
-                    setCustodyHighlight({ from: pvHouse.id, to: battHouse.id, kwh: 4.8 })
-                    handleSelectNode(pvHouse.id)
-                  }
+                  triggerCustodyScenario()
                 } else if (val === 'derate') {
-                  setCustodyHighlight(null)
                   command('derate')
                 } else if (val === 'cloud') {
-                  setCustodyHighlight(null)
                   command('cloud')
                 } else if (val === 'evening-peak') {
-                  setCustodyHighlight(null)
                   seek(19)
                 } else if (val === 'replay') {
-                  setCustodyHighlight(null)
                   replay()
                 } else if (val === 'reset') {
-                  setCustodyHighlight(null)
                   reconnect()
                   command('reset')
                 }
@@ -708,14 +594,14 @@ function CityApp() {
               }}
               title="Select a curated demonstration scenario"
             >
-              <option value="" disabled>⚡ Demo Scenarios ▾</option>
-              <option value="solar-peak">☀️ 1. Morning Solar Peak (10:00 AM)</option>
-              <option value="battery-custody">🔋 2. P2P Battery Custody (Surplus Stored in Neighbor)</option>
-              <option value="cloud">⛅ 3. Cloud Shadow Anomaly (Battery Disch.)</option>
-              <option value="evening-peak">🌆 4. Evening Peak &amp; EV Hubs (19:00 PM)</option>
-              <option value="derate">⚠️ 5. DT-3 Overload Stress (Derate)</option>
-              <option value="replay">🔄 6. Replay 24-Hour Walk</option>
-              <option value="reset">🔁 Reset to Nominal</option>
+              <option value="" disabled>Simulation checkpoints</option>
+              <option value="solar-peak">1. Morning solar peak (10:00)</option>
+              <option value="battery-custody">2. Night battery feeder support</option>
+              <option value="cloud">3. Cloud shadow anomaly</option>
+              <option value="evening-peak">4. Evening peak and EV hubs (19:00)</option>
+              <option value="derate">5. DT-3 overload stress test</option>
+              <option value="replay">6. Restart simulation replay</option>
+              <option value="reset">Reset to nominal run</option>
             </select>
           </div>
 
@@ -724,9 +610,8 @@ function CityApp() {
             className={`telemetry-toggle-btn ${showTelemetryGraph ? 'active' : ''}`}
             onClick={() => setShowTelemetryGraph((prev) => !prev)}
             aria-pressed={showTelemetryGraph}
-            title="Toggle Real-Time Telemetry & Load Curves (Shortcut: G)"
+            title="Toggle observed simulation telemetry (Shortcut: G)"
           >
-            <span className="telemetry-chart-icon">📈</span>
             <span>Telemetry Graph</span>
             <kbd>G</kbd>
           </button>
@@ -735,25 +620,18 @@ function CityApp() {
               "running on the built-in fixture". The old DemoTransport emitted
               'live', so a screen full of invented TypeScript constants was
               labelled Live. */}
-          <div className={`live-status-pill${offline ? ' offline' : ''}`}>
+          <div className={`live-status-pill${offline ? ' offline' : ''}${status === 'complete' ? ' complete' : ''}`}>
             <span className="pulsing-live-dot" />
             <span className="live-text">
-              {offline ? 'Demo data' : status === 'live' ? 'Live engine' : title(status)}
+              {offline
+                ? status === 'complete' ? 'Demo complete' : 'Demo replay'
+                : status === 'live' ? 'Simulation running'
+                : status === 'complete' ? 'Simulation complete'
+                : title(status)}
             </span>
           </div>
         </div>
       </header>
-
-      {/* Dedicated Battery Custody Scenario Alert Banner */}
-      {custodyHighlight && (
-        <div className="custody-scenario-banner" role="status">
-          <span className="custody-banner-pulse" />
-          <span className="custody-banner-text">
-            <strong>🔋 P2P Battery Custody Active:</strong> Solar rooftop at <strong>{custodyHighlight.from}</strong> has a full battery. Flow Agent diverted <strong>{custodyHighlight.kwh} kWh</strong> surplus into neighbor <strong>{custodyHighlight.to}</strong>'s BESS.
-          </span>
-          <button className="custody-banner-close" onClick={() => setCustodyHighlight(null)} title="Dismiss">✕</button>
-        </div>
-      )}
 
       {/* Secondary Microgrid Status Strip (From Image 2) */}
       <div className="sub-status-bar">
@@ -797,7 +675,9 @@ function CityApp() {
           </svg>
           <span>Block:</span>
           <strong>
-            {block ? `#${block.block} (${block.clock}, day ${block.day + 1})` : '—'}
+            {block
+              ? `#${block.block + 1}${scene?.total_blocks ? ` of ${scene.total_blocks}` : ''} · ${block.clock} · day ${block.day + 1}`
+              : '—'}
           </strong>
         </div>
       </div>
@@ -880,7 +760,7 @@ function CityApp() {
               ticked seconds that no part of the engine measures. The engine
               stamps every block with a day offset; the date follows it, and the
               clock shows the block time as given. */}
-          <span className="hud-date-text">{simDate(block?.day)}</span>
+          <span className="hud-date-text">Simulated · {simDate(block?.day)}</span>
           <div className="hud-digital-clock">{block?.clock ?? '--:--'}</div>
         </div>
         <button
@@ -889,7 +769,6 @@ function CityApp() {
           aria-pressed={isNightMode}
           title="Toggle Night / Evening Lighting"
         >
-          <span className="mode-moon-icon">🌙</span>
           <span>{isNightMode ? 'Night Mode' : 'Evening Glow'}</span>
         </button>
       </aside>
@@ -954,7 +833,6 @@ function CityApp() {
       {/* 6. Bottom-Right Mission Motto Floating HUD Card (Image 1) */}
       <aside className="hud-card hud-bottom-right">
         <div className="motto-row">
-          <span className="leaf-icon">🍃</span>
           <div className="motto-texts">
             <strong className="motto-title">A cleaner, more resilient tomorrow</strong>
             <span className="motto-sub">Decentralized · Local · Sustainable</span>
@@ -991,7 +869,7 @@ function CityApp() {
               onClick={() => setDetailPanel(null)}
               aria-label="Close Transformer Ledger"
             >
-              ✕
+              ×
             </button>
           </div>
           <div className="window-body">
@@ -1010,7 +888,7 @@ function CityApp() {
                 <div key={row.id} className="comp-row">
                   <strong>
                     {row.id}
-                    {row.state?.predicted_breach && ' ⚠'}
+                    {row.state?.predicted_breach && ' · forecast risk'}
                   </strong>
                   <span className={row.state?.stressed ? 'highlight-adverse' : undefined}>
                     {orDash((row.state?.loading ?? 0) * 100, 1, '%')}
@@ -1032,7 +910,7 @@ function CityApp() {
             {block?.transformers &&
               Object.values(block.transformers).some((t) => t.predicted_breach) && (
                 <p className="node-empty-guide">
-                  ⚠ marks a transformer the sentinel's one-block-ahead forecast
+                  “Forecast risk” marks the sentinel's one-block-ahead prediction.
                   expects to breach next block. Advisory only — nothing acts on a
                   forecast, because a bad forecast must never curtail a real trade.
                 </p>
@@ -1092,15 +970,14 @@ function CityApp() {
               onClick={() => setDetailPanel(null)}
               aria-label="Close DISCOM Ledger"
             >
-              ✕
+              ×
             </button>
           </div>
           <div className="window-body">
-            {!summary ? (
+            {status !== 'complete' || !summary ? (
               <p className="node-empty-guide">
-                Waiting for the engine's run summary. Nothing is shown here until it
-                arrives — these figures come from a completed 30-day run, and a
-                placeholder would be indistinguishable from a result.
+                Full-run economics become available when the finite simulation reaches
+                its final block. Current-block settlement remains visible in the activity stream.
               </p>
             ) : (
               <>
@@ -1218,7 +1095,7 @@ function CityApp() {
               onClick={() => setDetailPanel(null)}
               aria-label="Close Inspector"
             >
-              ✕
+              ×
             </button>
           </div>
           <div className="window-body">
@@ -1273,21 +1150,17 @@ function CityApp() {
                           premises whose registry rating the scene did not
                           carry — a rating that reads exactly like a measured
                           one. */}
-                      {selectedHouse.has_pv || isSharingElectricity
+                      {selectedHouse.has_pv
                         ? `${orDash(selectedHouse.pv_kw, 1)} kWp`
                         : 'None'}
                     </strong>
-                    <small>{selectedHouse.has_pv || isSharingElectricity ? 'Rated capacity' : 'Consumer node'}</small>
+                    <small>{selectedHouse.has_pv ? 'Rated capacity' : 'Consumer node'}</small>
                   </div>
 
                   <div className="node-stat-box">
                     <span>Battery Storage</span>
-                    <strong style={{ color: isSharingElectricity ? '#34d399' : isReceivingCustody ? '#00f0ff' : undefined }}>
-                      {isSharingElectricity
-                        ? '100%'
-                        : isReceivingCustody
-                        ? `${Math.round((selectedReading?.soc_frac ?? (custodyChargePct / 100)) * 100)}% ⚡ Charging`
-                        : selectedHouse.has_battery
+                    <strong style={{ color: batteryDischargedKwh > 0 ? '#f59e0b' : batteryChargedKwh > 0 ? '#00f0ff' : undefined }}>
+                      {selectedHouse.has_battery
                         ? orDash(
                             selectedReading?.soc_frac != null
                               ? selectedReading.soc_frac * 100
@@ -1298,12 +1171,12 @@ function CityApp() {
                         : 'Not installed'}
                     </strong>
                     <small>
-                      {isSharingElectricity
-                        ? '100% Full · Surplus Diverted to Neighbor'
-                        : isReceivingCustody
-                        ? `+4.8 kW Influx · Absorbing Surplus from ${custodyTrade?.from ?? 'Neighbor'}`
-                        : selectedHouse.has_battery
-                        ? `${orDash(selectedHouse.battery_kwh, 1)} kWh · ±${orDash(selectedHouse.battery_max_kw, 1)} kW`
+                      {selectedHouse.has_battery
+                        ? batteryDischargedKwh > 0
+                          ? `Discharged ${batteryDischargedKwh.toFixed(2)} kWh this block · ${orDash(selectedHouse.battery_kwh, 1)} kWh capacity`
+                          : batteryChargedKwh > 0
+                            ? `Charged ${batteryChargedKwh.toFixed(2)} kWh this block · ${orDash(selectedHouse.battery_kwh, 1)} kWh capacity`
+                            : `Idle this block · ${orDash(selectedHouse.battery_kwh, 1)} kWh capacity · ±${orDash(selectedHouse.battery_max_kw, 1)} kW`
                         : 'No local BESS'}
                     </small>
                   </div>
@@ -1354,7 +1227,7 @@ function CityApp() {
               </div>
             ) : (
               <div className="node-empty-guide">
-                <p>Click any residential house or solar rooftop in the 3D neighborhood to inspect live power dispatch, battery state-of-charge, and phase telemetry.</p>
+                <p>Click any residential house or solar rooftop in the 3D neighborhood to inspect the current block's power dispatch, battery state-of-charge, and phase telemetry.</p>
               </div>
             )}
           </div>
@@ -1365,6 +1238,9 @@ function CityApp() {
       {showGovernance && (
         <GovernancePanel
           onClose={() => setDetailPanel(null)}
+          available={block != null}
+          currentDay={block?.day ?? 0}
+          runComplete={status === 'complete'}
         />
       )}
 

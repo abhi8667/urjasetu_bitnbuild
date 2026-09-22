@@ -60,11 +60,11 @@ const TOUR_SCENES: Record<number, TourSceneConfig> = {
     step: 3,
     title: '3D Agent Swarm & Autonomous Stream',
     mascotEmote: 'thinking',
-    body: 'Every microgrid actor is represented by an autonomous software agent. Behold our 3D Agent Network: watch live packet flows linking Grid Risk ML forecasting, Trading Strategy LLMs, and Market Cleared dispatches in real-time!',
+    body: 'Every microgrid actor is represented by an autonomous software agent. The 3D Agent Network shows packet flows for the current simulated block, linking Grid Risk ML forecasting, Trading Strategy LLMs, and market-cleared dispatches.',
     callouts: [
       '13 specialized agent roles across 5 functional families (ML, LLM, Logic, System, Governance)',
       'Dynamic message packets trace inter-agent consensus in 3D',
-      'Live stream logs reasoning, bidding constraints, and thermal adders',
+      'The synchronized stream logs reasoning, bidding constraints, and thermal adders',
     ],
     detailPanel: 'agents',
     showTelemetryGraph: false,
@@ -86,11 +86,11 @@ const TOUR_SCENES: Record<number, TourSceneConfig> = {
   },
   5: {
     step: 5,
-    title: '24-Hour Real-Time Telemetry Dynamics',
+    title: 'Observed Simulation Telemetry',
     mascotEmote: 'pointing',
-    body: 'Judges can inspect real-time 24-hour supply, demand, and transformer load dynamics. The Sentinel agent identifies impending bottlenecks one block in advance, enabling predictive load shaping.',
+    body: 'Judges can inspect supply, demand, and transformer load up to the current simulation playhead. The Sentinel agent identifies impending bottlenecks one block in advance, enabling predictive load shaping without exposing later results.',
     callouts: [
-      'Real-time load curve tracking across all 4 transformers',
+      'Observed load curves across all 4 transformers',
       'One-block-ahead predictive breach detection',
     ],
     showTelemetryGraph: true,
@@ -140,9 +140,9 @@ const TOUR_SCENES: Record<number, TourSceneConfig> = {
     step: 9,
     title: 'UrjaSetu: People · Power · Together',
     mascotEmote: 'celebrating',
-    body: 'Decentralized, resilient, and utility-friendly. The guided presentation is complete! The simulation is now unlocked for live exploration, scenario testing (derating / clouds), or judge Q&A.',
+    body: 'Decentralized, resilient, and utility-friendly. The guided presentation is complete. The simulation is now unlocked for interactive exploration, scenario testing, or judge Q&A.',
     callouts: [
-      'Click "Enter Free Cockpit" to test live scenarios & derates',
+      'Click "Enter Free Cockpit" to test scenarios and derates',
       'Press "Replay Tour" to run the presentation pitch again',
     ],
     cameraMode: 'orbit',
@@ -361,7 +361,7 @@ export function CinematicTour({
           <div className="dialog-callout-list">
             {activeScene.callouts.map((callout, i) => (
               <div key={i} className="dialog-callout-item">
-                <span className="dialog-callout-bullet">✦</span>
+                <span className="dialog-callout-bullet" aria-hidden="true">—</span>
                 <span>{callout}</span>
               </div>
             ))}
@@ -384,7 +384,7 @@ export function CinematicTour({
                 title={stepIndex === 9 ? 'Finish & Explore Freely' : 'Next Scene (Right Arrow or Space)'}
               >
                 {stepIndex === 9 ? (
-                  <span>Explore Freely ✓</span>
+                  <span>Explore Freely</span>
                 ) : (
                   <>
                     <span>Next Scene</span>

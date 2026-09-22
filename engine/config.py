@@ -108,16 +108,21 @@ class Config:
     transaction_charge: float = 0.42
     platform_fee: float = 0.25
     gst_pct: float = 5.0
+    # A local trade must leave the buyer visibly better off after every charge,
+    # not merely no worse off.  Settlement trims discretionary charges to keep
+    # this all-in saving; regulated energy/wheeling costs are never hidden.
+    min_consumer_savings_pct: float = 5.0
     feed_in_tariff: float = 2.25
     # How the counterfactual credits exported surplus.
     #   "one_for_one" offsets kWh against consumption, worth the full retail
-    #     tariff. This IS net metering, and it is the scheme the project argues
-    #     against, so it is the default.
+    #     tariff. It remains available as a deliberately generous sensitivity
+    #     case, but is not the shipped comparison.
     #   "feed_in" pays the KERC rate the dataset records (Rs2.25/kWh), which is
     #     closer to gross metering.
-    # The choice flips who wins: see DECISIONS.md D13. It is a pitch decision,
-    # not a tuning knob.
-    baseline_export_credit: str = "one_for_one"
+    # The choice flips who wins. The shipped comparison uses the Rs2.25/kWh
+    # export-credit alternative recorded in the project data; changing it must
+    # be disclosed with the result.
+    baseline_export_credit: str = "feed_in"
     cross_subsidy: float = 0.0
     cross_subsidy_enabled: bool = False
     credit_carryforward_blocks: int = 8760   # 12 months of hourly blocks
@@ -224,6 +229,10 @@ def _validate(config: "Config") -> None:
         problems.append(
             f"baseline_export_credit={config.baseline_export_credit!r} must be "
             f"'one_for_one' or 'feed_in'")
+    if not 0 <= config.min_consumer_savings_pct < 100:
+        problems.append(
+            f"min_consumer_savings_pct={config.min_consumer_savings_pct} "
+            "outside [0, 100)")
     if not config.rating_kva:
         problems.append("rating_kva is empty — no transformer would be rated")
     if config.groq_timeout_seconds <= 0:

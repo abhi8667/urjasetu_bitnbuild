@@ -86,6 +86,9 @@ def test_scenario_default_config():
     check("default: ST1 holds", abs(sum(l.net_inr for l in settle.ledger)
                                     - settle.charges_collected) < 1e-6)
     check("default: baseline ages >= p2p", cmp["baseline_ages_at_least_as_fast"])
+    check("default: consumers pay less than the configured export-credit baseline",
+          cmp["household_bills_inr"]["saved_inr"] > 0,
+          f"saved Rs{cmp['household_bills_inr']['saved_inr']:.2f}")
     check("default: median tick < 50ms", r.median_tick_ms < 50.0,
           f"{r.median_tick_ms:.2f} ms")
     print(f"    -> life saved {cmp['transformer_life_hours']['saved_hours']:.2f} h, "

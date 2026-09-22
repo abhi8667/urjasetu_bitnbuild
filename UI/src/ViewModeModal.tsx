@@ -8,7 +8,7 @@ export function ViewModeModal({ onSelectDemo, onSelectFree }: ViewModeModalProps
     <div className="view-mode-modal-backdrop" role="dialog" aria-modal="true" aria-label="Select Experience Mode">
       <div className="view-mode-card">
         <div className="view-mode-header">
-          <div className="view-mode-pill">⚡ Presentation Mode Selector</div>
+          <div className="view-mode-pill">Presentation Mode Selector</div>
           <h2 className="view-mode-title">Welcome to UrjaSetu</h2>
           <p className="view-mode-desc">
             Choose how you would like to explore the decentralized microgrid simulation today.
@@ -63,7 +63,7 @@ export function ViewModeModal({ onSelectDemo, onSelectFree }: ViewModeModalProps
             </div>
             <h3 className="option-title">Free Operator View</h3>
             <p className="option-text">
-              Standard interactive cockpit. Orbit freely in 3D, manually click solar houses, toggle live telemetry graphs,
+              Standard interactive cockpit. Orbit freely in 3D, inspect observed simulation telemetry,
               inject cloud anomalies, and inspect transformer ageing metrics.
             </p>
             <div className="option-action-row">

@@ -154,6 +154,21 @@ largest; quote the bill saving honestly as a percentage of the daytime bill.
 `config.max_bid_kwh_per_block` (3.0) caps how much any one buyer can take per
 block, so scarce surplus is competed for rather than swallowed by the first bid.
 
+The shipped economic comparison uses the dataset's ₹2.25/kWh export-credit
+alternative (`baseline_export_credit: feed_in`). On the deterministic 30-day
+run, community cost falls from ₹863,761.66 to ₹847,136.24 — a ₹16,625.43
+reduction — while transformer ageing falls by 25.84 equivalent life-hours.
+The `one_for_one` sensitivity remains implemented, but it is more generous to
+exporters than this P2P market and produces a negative community saving even
+with every service charge set to zero. It must never be presented as the same
+counterfactual or have its sign relabelled.
+
+Every individual P2P buyer also has a separate all-in protection:
+`min_consumer_savings_pct = 5`. Settlement trims the discretionary ageing
+adder first and the platform fee second; it never silently trims wheeling or
+transaction charges. If those fixed costs cannot preserve the configured
+saving, the run raises rather than publishing an uneconomic trade.
+
 ### D11 — Coordinates, building type and loss reach the engine as `Site`, not on `House`
 
 The registry carries real Whitefield lat/lon for all 60 premises, a
