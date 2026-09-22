@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import type { LightingMode } from './CityEnvironment'
 import { City3D, type CameraMode } from './City3D'
 import { AgentNetwork } from './AgentNetwork'
 import { SyncedAgentNetwork, useCityBroadcast } from './agentSync'
@@ -187,7 +188,7 @@ function useGridTransport() {
 function CircularGauge({
   label,
   value,
-  color = '#00f0ff',
+  color = 'var(--accent-cyan)',
   sublabel,
 }: {
   label: string
@@ -269,7 +270,7 @@ function CityApp() {
   const showNodeInspector = detailPanel === 'node'
   const showGovernance = detailPanel === 'governance'
   const showAgentNetwork = detailPanel === 'agents'
-  const [isNightMode, setIsNightMode] = useState(true)
+  const [lightingMode, setLightingMode] = useState<LightingMode>('simulation')
   const [showTelemetryGraph, setShowTelemetryGraph] = useState(false)
   const [custodyHighlight, setCustodyHighlight] = useState<{ from: string; to: string; kwh: number } | null>(null)
   // Live dynamic battery charging state: increases in real-time as power transfers into host
@@ -520,7 +521,7 @@ function CityApp() {
   const isReceivingCustody = Boolean(custodyTrade && selectedHouse?.has_battery)
 
   return (
-    <div className={`urjasetu-app ${isNightMode ? 'theme-night' : 'theme-evening'} ${detailPanel ? 'has-detail-panel' : ''}`}>
+    <div className={`urjasetu-app ${lightingMode === 'night' ? 'theme-night' : 'theme-evening'} ${detailPanel ? 'has-detail-panel' : ''}`}>
       {/* 1. Immersive Full-Screen 3D City Viewport */}
       {scene ? (
         <City3D
@@ -530,7 +531,7 @@ function CityApp() {
           onSelect={handleSelectNode}
           cameraMode={cameraMode}
           onCameraModeChange={setCameraMode}
-          isNightMode={isNightMode}
+          lightingMode={lightingMode}
           custodyHighlight={custodyHighlight}
         />
       ) : (
@@ -657,7 +658,7 @@ function CityApp() {
             }}
             title="Switch between Guided Presentation Demo and Free View"
           >
-            <span>{viewMode === 'demo' ? '🎮 Free View' : '🎬 Demo Tour'}</span>
+            <span>{viewMode === 'demo' ? 'Free View' : 'Demo Tour'}</span>
           </button>
 
           {/* Curated Demo Scenarios Dropdown */}
@@ -708,14 +709,14 @@ function CityApp() {
               }}
               title="Select a curated demonstration scenario"
             >
-              <option value="" disabled>⚡ Demo Scenarios ▾</option>
-              <option value="solar-peak">☀️ 1. Morning Solar Peak (10:00 AM)</option>
-              <option value="battery-custody">🔋 2. P2P Battery Custody (Surplus Stored in Neighbor)</option>
-              <option value="cloud">⛅ 3. Cloud Shadow Anomaly (Battery Disch.)</option>
-              <option value="evening-peak">🌆 4. Evening Peak &amp; EV Hubs (19:00 PM)</option>
-              <option value="derate">⚠️ 5. DT-3 Overload Stress (Derate)</option>
-              <option value="replay">🔄 6. Replay 24-Hour Walk</option>
-              <option value="reset">🔁 Reset to Nominal</option>
+              <option value="" disabled>Demo Scenarios ▾</option>
+              <option value="solar-peak">1. Morning Solar Peak (10:00 AM)</option>
+              <option value="battery-custody">2. P2P Battery Custody (Surplus Stored in Neighbor)</option>
+              <option value="cloud">3. Cloud Shadow Anomaly (Battery Disch.)</option>
+              <option value="evening-peak">4. Evening Peak &amp; EV Hubs (19:00 PM)</option>
+              <option value="derate">5. DT-3 Overload Stress (Derate)</option>
+              <option value="replay">6. Replay 24-Hour Walk</option>
+              <option value="reset">Reset to Nominal</option>
             </select>
           </div>
 
@@ -724,9 +725,10 @@ function CityApp() {
             className={`telemetry-toggle-btn ${showTelemetryGraph ? 'active' : ''}`}
             onClick={() => setShowTelemetryGraph((prev) => !prev)}
             aria-pressed={showTelemetryGraph}
+            aria-label="Telemetry Graph"
             title="Toggle Real-Time Telemetry & Load Curves (Shortcut: G)"
           >
-            <span className="telemetry-chart-icon">📈</span>
+            <svg className="telemetry-chart-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M4 4v16h16M7 14l4-5 4 3 5-7" /></svg>
             <span>Telemetry Graph</span>
             <kbd>G</kbd>
           </button>
@@ -883,15 +885,19 @@ function CityApp() {
           <span className="hud-date-text">{simDate(block?.day)}</span>
           <div className="hud-digital-clock">{block?.clock ?? '--:--'}</div>
         </div>
-        <button
-          className="mode-toggle-pill"
-          onClick={() => setIsNightMode((v) => !v)}
-          aria-pressed={isNightMode}
-          title="Toggle Night / Evening Lighting"
+        <select
+          className="mode-toggle-pill lighting-select"
+          value={lightingMode}
+          onChange={(event) => setLightingMode(event.target.value as LightingMode)}
+          aria-label="Scene lighting"
+          title="Visual lighting preview only; energy simulation is unchanged"
         >
-          <span className="mode-moon-icon">🌙</span>
-          <span>{isNightMode ? 'Night Mode' : 'Evening Glow'}</span>
-        </button>
+          <option value="simulation">Auto · simulation time</option>
+          <option value="sunrise">Sunrise preview</option>
+          <option value="day">Daylight preview</option>
+          <option value="sunset">Sunset preview</option>
+          <option value="night">Night preview</option>
+        </select>
       </aside>
 
       {/* 5. Bottom-Left Camera Traversal Floating HUD Card (Image 1) */}
@@ -1048,7 +1054,7 @@ function CityApp() {
                   key={row.id}
                   label={row.id}
                   value={Math.round((row.state?.loading ?? 0) * 100)}
-                  color={row.state?.stressed ? '#ff4d6d' : '#00f0ff'}
+                  color={row.state?.stressed ? '#ff4d6d' : 'var(--accent-cyan)'}
                   sublabel={`${Math.round((row.state?.loading ?? 0) * 100)}% · ${row.ratingKva} kVA`}
                 />
               ))}
@@ -1282,7 +1288,7 @@ function CityApp() {
 
                   <div className="node-stat-box">
                     <span>Battery Storage</span>
-                    <strong style={{ color: isSharingElectricity ? '#34d399' : isReceivingCustody ? '#00f0ff' : undefined }}>
+                    <strong style={{ color: isSharingElectricity ? '#34d399' : isReceivingCustody ? 'var(--accent-cyan)' : undefined }}>
                       {isSharingElectricity
                         ? '100%'
                         : isReceivingCustody

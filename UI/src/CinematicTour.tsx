@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { UrjaMascot, type MascotEmote } from './UrjaMascot'
 import { SplashScreen } from './SplashScreen'
@@ -173,6 +173,37 @@ export function CinematicTour({
   triggerCustodyScenario,
   resetScenarios,
 }: CinematicTourProps) {
+  const [minimized, setMinimized] = useState(false)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const dragState = useRef<{ startMx: number; startMy: number; startPx: number; startPy: number } | null>(null)
+
+  // Reset position and minimized when the scene changes
+  useEffect(() => {
+    setDragOffset({ x: 0, y: 0 })
+    setMinimized(false)
+  }, [stepIndex])
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragState.current) return
+      const { startMx, startMy, startPx, startPy } = dragState.current
+      setDragOffset({ x: startPx + e.clientX - startMx, y: startPy + e.clientY - startMy })
+    }
+    const onUp = () => { dragState.current = null }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
+  const onDragHandleMouseDown = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button,a,select,input')) return
+    e.preventDefault()
+    dragState.current = { startMx: e.clientX, startMy: e.clientY, startPx: dragOffset.x, startPy: dragOffset.y }
+  }, [dragOffset])
+
   // Apply scene orchestration whenever stepIndex changes
   const applyScene = useCallback(
     (step: number) => {
@@ -313,6 +344,27 @@ export function CinematicTour({
   const activeScene = TOUR_SCENES[stepIndex]
   if (!activeScene) return null
 
+  const hasDrag = dragOffset.x !== 0 || dragOffset.y !== 0
+
+  // Compute the drag-aware transform for the dock.
+  // Each placement class has its own base transform; we tack the drag delta on top.
+  const dragStyle: React.CSSProperties | undefined = hasDrag ? (() => {
+    const { placement } = activeScene
+    let baseTransform = ''
+    if (placement === 'bottom-center' || placement === 'top-under-hud' || placement === 'top-center') {
+      baseTransform = 'translateX(-50%)'
+    } else if (placement === 'left-middle') {
+      baseTransform = 'translateY(-50%)'
+    }
+    // bottom-right and bottom-left have transform: none
+    return {
+      transform: baseTransform
+        ? `${baseTransform} translate(${dragOffset.x}px, ${dragOffset.y}px)`
+        : `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
+      transition: 'none',
+    }
+  })() : undefined
+
   return (
     <>
       {/* Letterbox Bars for cinematic framing */}
@@ -324,12 +376,17 @@ export function CinematicTour({
 
       {/* Presentation Dock with Scene-Adaptive Placement */}
       <div
-        className={`cinematic-dialog-dock dock-placement-${activeScene.placement}`}
+        className={`cinematic-dialog-dock dock-placement-${activeScene.placement}${hasDrag ? ' is-dragging' : ''}`}
         role="region"
         aria-label="Demo presentation dialogue"
+        style={dragStyle}
       >
-        <div className="cinematic-dialog-bubble">
-          <div className="dialog-header-row">
+        <div className={`cinematic-dialog-bubble${minimized ? ' dialog-minimized' : ''}`}>
+          {/* Drag handle — the whole header row is draggable except buttons */}
+          <div
+            className="dialog-header-row dialog-drag-handle"
+            onMouseDown={onDragHandleMouseDown}
+          >
             <div className="dialog-presenter-badge">
               <UrjaMascot emote={activeScene.mascotEmote} size={44} />
               <div className="dialog-presenter-info">
@@ -345,6 +402,15 @@ export function CinematicTour({
               </div>
 
               <button
+                className="dialog-minimize-btn"
+                onClick={() => setMinimized(m => !m)}
+                aria-label={minimized ? 'Expand UrjaBot panel' : 'Minimise UrjaBot panel'}
+                title={minimized ? 'Expand' : 'Minimise'}
+              >
+                {minimized ? '▲' : '▬'}
+              </button>
+
+              <button
                 className="dialog-exit-btn"
                 onClick={onExitTour}
                 title="Exit Demo Tour to Free Operator Cockpit (Esc)"
@@ -355,61 +421,63 @@ export function CinematicTour({
             </div>
           </div>
 
-          <h3 className="dialog-title">{activeScene.title}</h3>
-          <p className="dialog-body-text">{activeScene.body}</p>
+          {!minimized && <>
+            <h3 className="dialog-title">{activeScene.title}</h3>
+            <p className="dialog-body-text">{activeScene.body}</p>
 
-          <div className="dialog-callout-list">
-            {activeScene.callouts.map((callout, i) => (
-              <div key={i} className="dialog-callout-item">
-                <span className="dialog-callout-bullet">✦</span>
-                <span>{callout}</span>
-              </div>
-            ))}
-          </div>
+            <div className="dialog-callout-list">
+              {activeScene.callouts.map((callout, i) => (
+                <div key={i} className="dialog-callout-item">
+                  <span className="dialog-callout-bullet">✦</span>
+                  <span>{callout}</span>
+                </div>
+              ))}
+            </div>
 
-          <div className="dialog-footer-row">
-            <div className="dialog-nav-group">
-              <button
-                className="dialog-prev-btn"
-                onClick={handlePrev}
-                title="Previous Scene (Left Arrow)"
-              >
-                ← Back
-              </button>
-
-              <button
-                className="dialog-next-btn"
-                onClick={handleNext}
-                autoFocus
-                title={stepIndex === 9 ? 'Finish & Explore Freely' : 'Next Scene (Right Arrow or Space)'}
-              >
-                {stepIndex === 9 ? (
-                  <span>Explore Freely ✓</span>
-                ) : (
-                  <>
-                    <span>Next Scene</span>
-                    <span>→</span>
-                  </>
-                )}
-              </button>
-
-              {stepIndex === 9 && (
+            <div className="dialog-footer-row">
+              <div className="dialog-nav-group">
                 <button
                   className="dialog-prev-btn"
-                  onClick={() => goToStep(0)}
-                  title="Replay from Splash Screen"
+                  onClick={handlePrev}
+                  title="Previous Scene (Left Arrow)"
                 >
-                  ↺ Replay Tour
+                  ← Back
                 </button>
-              )}
-            </div>
 
-            <div className="dialog-key-hints">
-              <span className="dialog-key-item">
-                <kbd className="dialog-kbd">←</kbd> <kbd className="dialog-kbd">→</kbd> or <kbd className="dialog-kbd">Space</kbd>
-              </span>
+                <button
+                  className="dialog-next-btn"
+                  onClick={handleNext}
+                  autoFocus
+                  title={stepIndex === 9 ? 'Finish & Explore Freely' : 'Next Scene (Right Arrow or Space)'}
+                >
+                  {stepIndex === 9 ? (
+                    <span>Explore Freely ✓</span>
+                  ) : (
+                    <>
+                      <span>Next Scene</span>
+                      <span>→</span>
+                    </>
+                  )}
+                </button>
+
+                {stepIndex === 9 && (
+                  <button
+                    className="dialog-prev-btn"
+                    onClick={() => goToStep(0)}
+                    title="Replay from Splash Screen"
+                  >
+                    ↺ Replay Tour
+                  </button>
+                )}
+              </div>
+
+              <div className="dialog-key-hints">
+                <span className="dialog-key-item">
+                  <kbd className="dialog-kbd">←</kbd> <kbd className="dialog-kbd">→</kbd> or <kbd className="dialog-kbd">Space</kbd>
+                </span>
+              </div>
             </div>
-          </div>
+          </>}
         </div>
       </div>
     </>

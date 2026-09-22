@@ -8,7 +8,7 @@ export function ViewModeModal({ onSelectDemo, onSelectFree }: ViewModeModalProps
     <div className="view-mode-modal-backdrop" role="dialog" aria-modal="true" aria-label="Select Experience Mode">
       <div className="view-mode-card">
         <div className="view-mode-header">
-          <div className="view-mode-pill">⚡ Presentation Mode Selector</div>
+          <div className="view-mode-pill">URJASETU / EXPERIENCE SELECTOR</div>
           <h2 className="view-mode-title">Welcome to UrjaSetu</h2>
           <p className="view-mode-desc">
             Choose how you would like to explore the decentralized microgrid simulation today.
@@ -23,7 +23,7 @@ export function ViewModeModal({ onSelectDemo, onSelectFree }: ViewModeModalProps
             tabIndex={0}
             role="button"
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') onSelectDemo()
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectDemo() }
             }}
           >
             <span className="option-recommended-tag">Judges &amp; Pitch</span>
@@ -50,7 +50,7 @@ export function ViewModeModal({ onSelectDemo, onSelectFree }: ViewModeModalProps
             tabIndex={0}
             role="button"
             onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') onSelectFree()
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectFree() }
             }}
           >
             <div className="option-icon-box">

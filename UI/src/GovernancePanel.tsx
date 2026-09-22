@@ -75,13 +75,13 @@ interface Briefing {
 const SEV_COLOR: Record<string, string> = {
   critical: '#ef4444',
   warning: '#f59e0b',
-  info: '#00f0ff',
+  info: 'var(--accent-cyan)',
 }
 
 const SEV_BG: Record<string, string> = {
   critical: 'rgba(239,68,68,0.12)',
   warning: 'rgba(245,158,11,0.12)',
-  info: 'rgba(0,240,255,0.08)',
+  info: 'rgba(121,201,187,0.08)',
 }
 
 function SevBadge({ sev }: { sev: string }) {
@@ -94,9 +94,9 @@ function SevBadge({ sev }: { sev: string }) {
       fontWeight: 700,
       letterSpacing: '0.06em',
       textTransform: 'uppercase',
-      color: SEV_COLOR[sev] ?? '#94a3b8',
+      color: SEV_COLOR[sev] ?? 'var(--text-secondary)',
       background: SEV_BG[sev] ?? 'rgba(255,255,255,0.06)',
-      border: `1px solid ${SEV_COLOR[sev] ?? '#94a3b8'}44`,
+      border: `1px solid ${SEV_COLOR[sev] ?? 'var(--text-secondary)'}44`,
     }}>
       {sev}
     </span>
@@ -111,7 +111,7 @@ function RuleBadge({ rule }: { rule: string }) {
       borderRadius: 3,
       fontSize: 10,
       fontWeight: 700,
-      fontFamily: 'monospace',
+      fontFamily: 'IBM Plex Mono, monospace',
       color: '#bc8aff',
       background: 'rgba(188,138,255,0.1)',
       border: '1px solid rgba(188,138,255,0.25)',
@@ -168,7 +168,7 @@ function IncidentList({ incidents }: { incidents: Incident[] }) {
                 ? (s === 'all' ? 'rgba(255,255,255,0.15)' : SEV_BG[s])
                 : 'rgba(255,255,255,0.05)',
               color: s === 'all' ? '#e2e8f0' : SEV_COLOR[s],
-              border: `1px solid ${s === 'all' ? 'rgba(255,255,255,0.15)' : (SEV_COLOR[s] ?? '#94a3b8') + '44'}`,
+              border: `1px solid ${s === 'all' ? 'rgba(255,255,255,0.15)' : (SEV_COLOR[s] ?? 'var(--text-secondary)') + '44'}`,
               cursor: 'pointer',
             }}
           >
@@ -178,7 +178,7 @@ function IncidentList({ incidents }: { incidents: Incident[] }) {
       </div>
 
       {shown.length === 0 && (
-        <p style={{ color: '#64748b', fontSize: 12, padding: '12px 0' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, padding: '12px 0' }}>
           No incidents for this filter.
         </p>
       )}
@@ -187,7 +187,7 @@ function IncidentList({ incidents }: { incidents: Incident[] }) {
         {shown.map((inc, idx) => (
           <div key={`${inc.block}-${inc.rule}-${idx}`} style={{
             background: SEV_BG[inc.severity] ?? 'rgba(255,255,255,0.04)',
-            border: `1px solid ${(SEV_COLOR[inc.severity] ?? '#94a3b8') + '33'}`,
+            border: `1px solid ${(SEV_COLOR[inc.severity] ?? 'var(--text-secondary)') + '33'}`,
             borderRadius: 6,
             padding: '8px 10px',
             fontSize: 12,
@@ -195,14 +195,14 @@ function IncidentList({ incidents }: { incidents: Incident[] }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
               <RuleBadge rule={inc.rule} />
               <SevBadge sev={inc.severity} />
-              <span style={{ color: '#64748b', fontSize: 10 }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>
                 Block {inc.block} · {inc.clock} · Day {inc.day + 1}
               </span>
               <span style={{
                 marginLeft: 'auto',
-                color: '#94a3b8',
+                color: 'var(--text-secondary)',
                 fontSize: 10,
-                fontFamily: 'monospace',
+                fontFamily: 'IBM Plex Mono, monospace',
                 background: 'rgba(255,255,255,0.06)',
                 padding: '1px 5px',
                 borderRadius: 3,
@@ -229,7 +229,7 @@ function DaySummaryTable({ days }: { days: DayAudit[] }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {/* Pagination controls */}
       {totalPages > 1 && (
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, color: '#94a3b8' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 11, color: 'var(--text-secondary)' }}>
           <button
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}
@@ -264,17 +264,17 @@ function DaySummaryTable({ days }: { days: DayAudit[] }) {
                 cursor: 'pointer', textAlign: 'left',
               }}
             >
-              <span style={{ fontSize: 11, color: '#64748b', minWidth: 46 }}>Day {d.day + 1}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', minWidth: 46 }}>Day {d.day + 1}</span>
               <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                 {d.critical > 0 && <SevBadge sev="critical" />}
                 {d.warning > 0 && <SevBadge sev="warning" />}
                 {d.info > 0 && <SevBadge sev="info" />}
                 {d.incidents === 0 && <span style={{ fontSize: 10, color: '#10b981' }}>✓ clean</span>}
               </div>
-              <span style={{ flex: 1, fontSize: 11, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {d.headline}
               </span>
-              <span style={{ color: '#64748b', fontSize: 12 }}>{isOpen ? '▲' : '▼'}</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{isOpen ? '▲' : '▼'}</span>
             </button>
 
             {isOpen && (
@@ -282,20 +282,20 @@ function DaySummaryTable({ days }: { days: DayAudit[] }) {
                 {/* Transformer loading bars */}
                 {Object.keys(d.transformer_peak_loading).length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
-                    <span style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Peak transformer loading</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Peak transformer loading</span>
                     {Object.entries(d.transformer_peak_loading).map(([tid, frac]) => {
                       const pct = frac * 100
                       return (
                         <div key={tid} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ minWidth: 40, color: '#e2e8f0', fontFamily: 'monospace' }}>{tid}</span>
+                          <span style={{ minWidth: 40, color: '#e2e8f0', fontFamily: 'IBM Plex Mono, monospace' }}>{tid}</span>
                           <LoadBar value={pct} />
                           <span style={{
                             minWidth: 42, textAlign: 'right',
                             color: pct >= 100 ? '#ef4444' : pct >= 85 ? '#f59e0b' : '#10b981',
-                            fontFamily: 'monospace',
+                            fontFamily: 'IBM Plex Mono, monospace',
                           }}>{pct.toFixed(1)}%</span>
                           {d.transformer_peak_hotspot[tid] != null && (
-                            <span style={{ color: '#64748b', minWidth: 48 }}>
+                            <span style={{ color: 'var(--text-muted)', minWidth: 48 }}>
                               {d.transformer_peak_hotspot[tid].toFixed(1)} °C
                             </span>
                           )}
@@ -310,15 +310,15 @@ function DaySummaryTable({ days }: { days: DayAudit[] }) {
                   <span style={{ color: d.settlement_reconciled ? '#10b981' : '#ef4444' }}>
                     {d.settlement_reconciled ? '✓ Settled' : '✗ Settlement mismatch'}
                   </span>
-                  <span style={{ color: '#94a3b8' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>
                     {d.blocks_with_trades} trading block{d.blocks_with_trades !== 1 ? 's' : ''}
                   </span>
                   {d.max_clearing_price > 0 && (
-                    <span style={{ color: d.max_clearing_price > 7.0 ? '#f59e0b' : '#94a3b8' }}>
+                    <span style={{ color: d.max_clearing_price > 7.0 ? '#f59e0b' : 'var(--text-secondary)' }}>
                       Peak ₹{d.max_clearing_price.toFixed(2)}/kWh
                     </span>
                   )}
-                  <span style={{ color: '#94a3b8' }}>₹{d.total_charges_inr.toFixed(2)} collected</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>₹{d.total_charges_inr.toFixed(2)} collected</span>
                 </div>
 
                 {/* Fairness flags */}
@@ -328,7 +328,7 @@ function DaySummaryTable({ days }: { days: DayAudit[] }) {
                   </p>
                 )}
                 {d.houses_with_zero_p2p.length > 0 && (
-                  <p style={{ color: '#64748b', fontSize: 11 }}>
+                  <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>
                     {d.houses_with_zero_p2p.length} importing house(s) received no P2P energy today.
                   </p>
                 )}
@@ -371,7 +371,7 @@ function FairnessTable({ fairness }: { fairness: GovernanceData['fairness'] }) {
 
   const th: React.CSSProperties = {
     padding: '4px 6px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-    letterSpacing: '0.06em', color: '#64748b', textAlign: 'left', cursor: 'pointer',
+    letterSpacing: '0.06em', color: 'var(--text-muted)', textAlign: 'left', cursor: 'pointer',
   }
 
   return (
@@ -387,15 +387,15 @@ function FairnessTable({ fairness }: { fairness: GovernanceData['fairness'] }) {
         <tbody>
           {sorted.map((row) => (
             <tr key={row.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              <td style={{ padding: '4px 6px', fontFamily: 'monospace', color: '#e2e8f0' }}>{row.id}</td>
+              <td style={{ padding: '4px 6px', fontFamily: 'IBM Plex Mono, monospace', color: '#e2e8f0' }}>{row.id}</td>
               <td style={{ padding: '4px 6px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{
                     height: 6, borderRadius: 3,
                     width: `${Math.max(4, (row.p2p_kwh / maxP2p) * 80)}px`,
-                    background: row.p2p_kwh === 0 ? '#64748b' : '#10b981',
+                    background: row.p2p_kwh === 0 ? 'var(--text-muted)' : '#10b981',
                   }} />
-                  <span style={{ color: row.p2p_kwh === 0 ? '#64748b' : '#e2e8f0' }}>
+                  <span style={{ color: row.p2p_kwh === 0 ? 'var(--text-muted)' : '#e2e8f0' }}>
                     {row.p2p_kwh === 0 ? '—' : row.p2p_kwh.toFixed(1)}
                   </span>
                 </div>
@@ -409,7 +409,7 @@ function FairnessTable({ fairness }: { fairness: GovernanceData['fairness'] }) {
                       background: '#f59e0b',
                     }} />
                   )}
-                  <span style={{ color: row.curtailed_blocks > 0 ? '#f59e0b' : '#64748b' }}>
+                  <span style={{ color: row.curtailed_blocks > 0 ? '#f59e0b' : 'var(--text-muted)' }}>
                     {row.curtailed_blocks === 0 ? '—' : row.curtailed_blocks}
                   </span>
                 </div>
@@ -419,7 +419,7 @@ function FairnessTable({ fairness }: { fairness: GovernanceData['fairness'] }) {
         </tbody>
       </table>
       {rows.length === 0 && (
-        <p style={{ color: '#64748b', fontSize: 12, padding: '12px 0' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, padding: '12px 0' }}>
           No fairness data available yet.
         </p>
       )}
@@ -433,7 +433,7 @@ function BriefingList({ briefings }: { briefings: Briefing[] }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   if (briefings.length === 0) {
-    return <p style={{ color: '#64748b', fontSize: 12, padding: '12px 0' }}>No briefings available.</p>
+    return <p style={{ color: 'var(--text-muted)', fontSize: 12, padding: '12px 0' }}>No briefings available.</p>
   }
 
   const isLLM = current?.mode === 'llm'
@@ -459,10 +459,10 @@ function BriefingList({ briefings }: { briefings: Briefing[] }) {
                 fontSize: 11,
                 fontWeight: selected === b.day ? 700 : 400,
                 background: selected === b.day
-                  ? 'rgba(0,240,255,0.15)'
+                  ? 'rgba(121,201,187,0.15)'
                   : hasCrit ? 'rgba(239,68,68,0.08)' : hasWarn ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.05)',
-                color: selected === b.day ? '#00f0ff' : hasCrit ? '#ef4444' : hasWarn ? '#f59e0b' : '#94a3b8',
-                border: `1px solid ${selected === b.day ? 'rgba(0,240,255,0.4)' : hasCrit ? 'rgba(239,68,68,0.25)' : hasWarn ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.08)'}`,
+                color: selected === b.day ? 'var(--accent-cyan)' : hasCrit ? '#ef4444' : hasWarn ? '#f59e0b' : 'var(--text-secondary)',
+                border: `1px solid ${selected === b.day ? 'rgba(121,201,187,0.4)' : hasCrit ? 'rgba(239,68,68,0.25)' : hasWarn ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.08)'}`,
                 cursor: 'pointer',
               }}
             >
@@ -483,9 +483,9 @@ function BriefingList({ briefings }: { briefings: Briefing[] }) {
             </span>
             <span style={{
               fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700,
-              background: isLLM ? 'rgba(188,138,255,0.15)' : 'rgba(0,240,255,0.1)',
-              color: isLLM ? '#bc8aff' : '#00f0ff',
-              border: `1px solid ${isLLM ? 'rgba(188,138,255,0.35)' : 'rgba(0,240,255,0.25)'}`,
+              background: isLLM ? 'rgba(188,138,255,0.15)' : 'rgba(121,201,187,0.1)',
+              color: isLLM ? '#bc8aff' : 'var(--accent-cyan)',
+              border: `1px solid ${isLLM ? 'rgba(188,138,255,0.35)' : 'rgba(121,201,187,0.25)'}`,
             }}>
               {isLLM ? '✦ LLM-enriched' : '⚙ Deterministic template'}
             </span>
@@ -509,7 +509,7 @@ function BriefingList({ briefings }: { briefings: Briefing[] }) {
 
           {/* Three questions */}
           {[
-            { label: '📌 What changed today?', text: current.what_changed, color: '#00f0ff' },
+            { label: '📌 What changed today?', text: current.what_changed, color: 'var(--accent-cyan)' },
             { label: '⚠ What needs attention?', text: current.needs_attention, color: '#f59e0b' },
             { label: '✅ Recommended action', text: current.recommendation, color: '#10b981' },
           ].map(({ label, text, color }) => (
@@ -531,14 +531,14 @@ function BriefingList({ briefings }: { briefings: Briefing[] }) {
           {/* Linked incidents */}
           {current.linked_incidents.length > 0 && (
             <div>
-              <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#64748b', marginBottom: 6 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>
                 Linked audit findings
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {current.linked_incidents.map((inc, i) => (
                   <div key={i} style={{
                     display: 'flex', alignItems: 'center', gap: 6,
-                    fontSize: 11, color: '#94a3b8',
+                    fontSize: 11, color: 'var(--text-secondary)',
                     padding: '3px 8px',
                     background: 'rgba(255,255,255,0.03)',
                     borderRadius: 4,
@@ -546,7 +546,7 @@ function BriefingList({ briefings }: { briefings: Briefing[] }) {
                     <RuleBadge rule={inc.rule} />
                     <SevBadge sev={inc.severity} />
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inc.message}</span>
-                    <span style={{ color: '#475569', fontSize: 10 }}>{inc.clock}</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{inc.clock}</span>
                   </div>
                 ))}
               </div>
@@ -626,10 +626,10 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
         maxHeight: '86vh',
         display: 'flex',
         flexDirection: 'column',
-        background: 'rgba(10, 16, 28, 0.97)',
+        background: 'var(--bg-panel)',
         border: '1px solid rgba(255,255,255,0.12)',
         borderRadius: 10,
-        boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
+        boxShadow: 'var(--shadow-panel)',
         zIndex: 9999,
         overflow: 'hidden',
       }}
@@ -673,8 +673,8 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
           onClick={onClose}
           aria-label="Close Governance Panel"
           style={{
-            width: 24, height: 24, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(255,255,255,0.06)', color: '#94a3b8', fontSize: 14, cursor: 'pointer',
+            width: 32, height: 32, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer',
             border: '1px solid rgba(255,255,255,0.1)',
           }}
         >✕</button>
@@ -692,9 +692,9 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
             onClick={() => setTab(id)}
             style={{
               flex: 1, padding: '9px 4px', fontSize: 11, fontWeight: tab === id ? 700 : 400,
-              color: tab === id ? '#00f0ff' : '#94a3b8',
+              color: tab === id ? 'var(--accent-cyan)' : 'var(--text-secondary)',
               background: 'transparent',
-              borderBottom: `2px solid ${tab === id ? '#00f0ff' : 'transparent'}`,
+              borderBottom: `2px solid ${tab === id ? 'var(--accent-cyan)' : 'transparent'}`,
               cursor: 'pointer',
               transition: 'color 0.15s, border-color 0.15s',
             }}
@@ -703,8 +703,8 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
             {count != null && count > 0 && (
               <span style={{
                 marginLeft: 5, fontSize: 9, padding: '1px 5px', borderRadius: 8,
-                background: tab === id ? 'rgba(0,240,255,0.15)' : 'rgba(255,255,255,0.08)',
-                color: tab === id ? '#00f0ff' : '#64748b',
+                background: tab === id ? 'rgba(121,201,187,0.15)' : 'rgba(255,255,255,0.08)',
+                color: tab === id ? 'var(--accent-cyan)' : 'var(--text-muted)',
               }}>
                 {count}
               </span>
@@ -716,11 +716,11 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
       {/* Body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
         {loading && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32, color: '#64748b', fontSize: 13 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32, color: 'var(--text-muted)', fontSize: 13 }}>
             <div style={{
               width: 16, height: 16, borderRadius: '50%',
-              border: '2px solid rgba(0,240,255,0.3)',
-              borderTopColor: '#00f0ff',
+              border: '2px solid rgba(121,201,187,0.3)',
+              borderTopColor: 'var(--accent-cyan)',
               animation: 'gov-spin 0.8s linear infinite',
             }} />
             Loading audit data…
@@ -736,8 +736,8 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
             fontSize: 12,
           }}>
             <strong>Could not load governance data</strong>
-            <p style={{ marginTop: 4, color: '#94a3b8' }}>{error}</p>
-            <p style={{ marginTop: 4, color: '#64748b' }}>
+            <p style={{ marginTop: 4, color: 'var(--text-secondary)' }}>{error}</p>
+            <p style={{ marginTop: 4, color: 'var(--text-muted)' }}>
               This panel requires the Python engine to be running at {ENGINE_HTTP}.
             </p>
           </div>
@@ -766,7 +766,7 @@ export function GovernancePanel({ onClose }: GovernancePanelProps) {
         padding: '7px 16px',
         borderTop: '1px solid rgba(255,255,255,0.06)',
         fontSize: 10,
-        color: '#475569',
+        color: 'var(--text-muted)',
         display: 'flex',
         justifyContent: 'space-between',
         flexShrink: 0,

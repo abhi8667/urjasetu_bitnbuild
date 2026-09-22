@@ -10,22 +10,22 @@
   --bg-subtle: rgba(255, 255, 255, 0.04);
   --border-glass: rgba(255, 255, 255, 0.09);
   --border-glass-hover: rgba(255, 255, 255, 0.2);
-  --border-cyan-glow: rgba(0, 240, 255, 0.45);
+  --border-cyan-glow: rgba(121, 201, 187, 0.45);
   
   --text-primary: #ffffff;
   --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-muted: #8a9b9f;
   
-  --accent-gold: #ffb703;
-  --accent-gold-glow: rgba(255, 183, 3, 0.35);
-  --accent-cyan: #00f0ff;
-  --accent-cyan-glow: rgba(0, 240, 255, 0.35);
+  --accent-gold: #e5b975;
+  --accent-gold-glow: rgba(229, 185, 117, 0.35);
+  --accent-cyan: #79c9bb;
+  --accent-cyan-glow: rgba(121, 201, 187, 0.35);
   --accent-green: #10b981;
   --accent-green-glow: rgba(16, 185, 129, 0.4);
   --accent-amber: #f59e0b;
   --accent-red: #ef4444;
 
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   color: var(--text-primary);
   background-color: var(--bg-dark);
   font-synthesis: none;
@@ -101,7 +101,7 @@ button {
 .pulse-spinner {
   width: 42px;
   height: 42px;
-  border: 3px solid rgba(0, 240, 255, 0.15);
+  border: 3px solid rgba(121, 201, 187, 0.15);
   border-top-color: var(--accent-cyan);
   border-radius: 50%;
   animation: spin 0.85s linear infinite;
@@ -110,9 +110,9 @@ button {
 .loader-fallback-btn {
   margin-top: 4px;
   padding: 8px 18px;
-  border: 1px solid rgba(0, 240, 255, 0.35);
+  border: 1px solid rgba(121, 201, 187, 0.35);
   border-radius: 999px;
-  background: rgba(0, 240, 255, 0.08);
+  background: rgba(121, 201, 187, 0.08);
   color: var(--accent-cyan);
   font: inherit;
   font-size: 13px;
@@ -121,8 +121,8 @@ button {
 }
 
 .loader-fallback-btn:hover {
-  background: rgba(0, 240, 255, 0.16);
-  border-color: rgba(0, 240, 255, 0.6);
+  background: rgba(121, 201, 187, 0.16);
+  border-color: rgba(121, 201, 187, 0.6);
 }
 
 .loader-fallback-btn:focus-visible {
@@ -199,7 +199,7 @@ a:focus-visible {
 }
 
 .brand-name {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.5px;
@@ -243,7 +243,7 @@ a:focus-visible {
 }
 
 .nav-pill-btn.pill-active {
-  background: rgba(0, 240, 255, 0.12);
+  background: rgba(121, 201, 187, 0.12);
   border-color: var(--accent-cyan);
   color: #ffffff;
   box-shadow: 0 0 14px var(--accent-cyan-glow);
@@ -263,7 +263,7 @@ a:focus-visible {
 
 .arrow-external {
   font-size: 13px;
-  color: #64748b;
+  color: #8a9b9f;
 }
 
 .nav-pill-btn:hover .arrow-external {
@@ -449,7 +449,7 @@ a:focus-visible {
 }
 
 .hud-value {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 23px;
   font-weight: 700;
   letter-spacing: -0.5px;
@@ -514,7 +514,7 @@ a:focus-visible {
 }
 
 .hud-digital-clock {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 21px;
   font-weight: 600;
   letter-spacing: 0.5px;
@@ -580,7 +580,7 @@ a:focus-visible {
 }
 
 .cam-view-btn.cam-active {
-  background: rgba(0, 240, 255, 0.14);
+  background: rgba(121, 201, 187, 0.14);
   border-color: var(--accent-cyan);
   color: #ffffff;
   box-shadow: 0 0 12px var(--accent-cyan-glow);
@@ -676,7 +676,7 @@ a:focus-visible {
   font-size: 9.5px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(0, 240, 255, 0.2);
+  background: rgba(121, 201, 187, 0.2);
   color: var(--accent-cyan);
 }
 
@@ -750,7 +750,7 @@ a:focus-visible {
 }
 
 .window-title-row h3 {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 13.5px;
   font-weight: 600;
   letter-spacing: 0.8px;
@@ -795,7 +795,7 @@ a:focus-visible {
   width: 440px;
   max-width: calc(100vw - 60px);
   border: 1.5px solid var(--border-cyan-glow);
-  box-shadow: 0 0 30px rgba(0, 240, 255, 0.22), 0 20px 40px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 0 30px rgba(121, 201, 187, 0.22), 0 20px 40px rgba(0, 0, 0, 0.7);
 }
 
 .stream-log-body {
@@ -875,7 +875,7 @@ a:focus-visible {
 }
 
 .log-time {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 10.5px;
   color: var(--text-muted);
 }
@@ -893,8 +893,8 @@ a:focus-visible {
   right: 45px;
   width: 470px;
   max-width: calc(100vw - 60px);
-  border: 1.5px solid rgba(255, 183, 3, 0.35);
-  box-shadow: 0 0 30px rgba(255, 183, 3, 0.15), 0 20px 40px rgba(0, 0, 0, 0.7);
+  border: 1.5px solid rgba(229, 185, 117, 0.35);
+  box-shadow: 0 0 30px rgba(229, 185, 117, 0.15), 0 20px 40px rgba(0, 0, 0, 0.7);
 }
 
 .gauges-flex-row {
@@ -932,7 +932,7 @@ a:focus-visible {
 }
 
 .gauge-pct {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 17px;
   font-weight: 700;
   color: #ffffff;
@@ -974,7 +974,7 @@ a:focus-visible {
 }
 
 .stat-val {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 21px;
   font-weight: 700;
   color: #ffffff;
@@ -1016,7 +1016,7 @@ a:focus-visible {
 
 .discom-stat-card strong {
   display: block;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 22px;
   color: #ffffff;
   margin: 4px 0 2px;
@@ -1134,7 +1134,7 @@ a:focus-visible {
 }
 
 .node-stat-box strong {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 18px;
   color: #ffffff;
 }
@@ -1163,7 +1163,7 @@ a:focus-visible {
 .focus-node-btn {
   padding: 6px 14px;
   border-radius: 6px;
-  background: rgba(0, 240, 255, 0.15);
+  background: rgba(121, 201, 187, 0.15);
   border: 1px solid var(--accent-cyan);
   color: #ffffff;
   font-size: 11.5px;
@@ -1172,7 +1172,7 @@ a:focus-visible {
 }
 
 .focus-node-btn:hover {
-  background: rgba(0, 240, 255, 0.3);
+  background: rgba(121, 201, 187, 0.3);
 }
 
 .node-empty-guide {
@@ -1247,7 +1247,7 @@ a:focus-visible {
 .dot-red { background: #ff4d6d; box-shadow: 0 0 6px rgba(255, 77, 109, 0.75); }
 .highlight-adverse { color: #ff4d6d; font-weight: 600; }
 .live-status-pill.offline { opacity: 0.85; }
-.live-status-pill.offline .pulsing-live-dot { background: #ffb703; animation: none; }
+.live-status-pill.offline .pulsing-live-dot { background: #e5b975; animation: none; }
 
 /* Docked operations layout: activity / city / one selected detail panel. */
 .urjasetu-app { --activity-width: 300px; --detail-width: 400px; }
@@ -1298,7 +1298,7 @@ a:focus-visible {
   .nav-pill-btn { padding: 8px; font-size: 11px; }
   .header-nav-pills .pill-icon { display: none; }
 }
-@media (max-width: 1050px) {
+@media (max-width: 1280px) {
   .urja-header { height: 112px; flex-wrap: wrap; align-content: center; gap: 8px; }
   .header-nav-pills { order: 3; width: 100%; justify-content: center; }
   .sub-status-bar { top: 120px; font-size: 9px; gap: 7px; }
@@ -1308,6 +1308,8 @@ a:focus-visible {
   .floating-window.window-transformer-ledger,
   .floating-window.window-discom-ledger,
   .floating-window.window-node-inspector { top: 266px; }
+}
+@media (max-width: 1050px) {
   .has-detail-panel .city-canvas-container { right: 16px; bottom: 390px; }
   .floating-window.window-transformer-ledger,
   .floating-window.window-discom-ledger,
@@ -1488,7 +1490,7 @@ a:focus-visible {
 }
 
 .telemetry-title-group h3 {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 1px;
@@ -1593,7 +1595,7 @@ a:focus-visible {
 }
 
 .telemetry-stat-card .stat-highlight {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 26px;
   font-weight: 800;
   color: #ffffff;

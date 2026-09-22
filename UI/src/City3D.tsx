@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 
+import { CityEnvironment, CitySurroundings, lightingAt, type LightingMode } from './CityEnvironment'
 import { layoutScene } from './layout'
 import type { BlockPayload, SceneHouse, ScenePayload, TradePayload } from './types'
 
@@ -29,7 +30,7 @@ type CityProps = {
   onSelect: (id: string | null) => void
   cameraMode?: CameraMode
   onCameraModeChange?: (mode: CameraMode) => void
-  isNightMode?: boolean
+  lightingMode?: LightingMode
   custodyHighlight?: { from: string; to: string; kwh: number } | null
 }
 
@@ -39,16 +40,16 @@ type Batch = {
   color: string
   parts: Part[]
   shape: 'box' | 'leaf' | 'trunk'
-  materialType?: 'standard' | 'glass' | 'solar' | 'metal' | 'lawn' | 'road'
+  materialType?: 'standard' | 'window' | 'glass' | 'solar' | 'metal' | 'lawn' | 'road'
 }
 
-// High-Contrast Twilight Architectural Palette matching Image 1
-const NIGHT_PALETTE = {
-  background: '#101726',   // Luminous twilight sky navy
-  ground: '#0c121e',       // Surrounding peripheral terrain
-  baseplate: '#161e2b',    // Elevated neighborhood platform
+// Architectural materials remain legible under both sunlight and moonlight.
+const CITY_PALETTE = {
+  background: '#111d20',   // Graphite sky matches the operations surfaces
+  ground: '#0d171a',       // Surrounding peripheral terrain
+  baseplate: '#59635f',    // Elevated neighborhood platform
   lawn: '#223d30',         // Rich dusk turf green - clearly distinct from road!
-  road: '#273243',         // Clear dark asphalt grey
+  road: '#454f53',         // Clear dark asphalt grey
   stripe: '#ffffff',       // Crisp white road markings
   curb: '#475569',         // Concrete curbs
   raised: '#334155',       // Foundation plinths & slabs
@@ -151,20 +152,20 @@ function buildDetailedArchitecture(scene: ScenePayload, layout: ReturnType<typeo
   }
 
   const tree = (x: number, z: number, scale = 1) => {
-    add(NIGHT_PALETTE.trunk, [x, 0.45 * scale, z], [0.14 * scale, 0.9 * scale, 0.14 * scale], undefined, 'trunk')
-    add(NIGHT_PALETTE.leafDark, [x, 1.15 * scale, z], [0.7 * scale, 0.88 * scale, 0.7 * scale], undefined, 'leaf')
-    add(NIGHT_PALETTE.leafLight, [x + 0.2 * scale, 1.4 * scale, z + 0.05], [0.48 * scale, 0.6 * scale, 0.48 * scale], undefined, 'leaf')
+    add(CITY_PALETTE.trunk, [x, 0.45 * scale, z], [0.14 * scale, 0.9 * scale, 0.14 * scale], undefined, 'trunk')
+    add(CITY_PALETTE.leafDark, [x, 1.15 * scale, z], [0.7 * scale, 0.88 * scale, 0.7 * scale], undefined, 'leaf')
+    add(CITY_PALETTE.leafLight, [x + 0.2 * scale, 1.4 * scale, z + 0.05], [0.48 * scale, 0.6 * scale, 0.48 * scale], undefined, 'leaf')
   }
 
   const solarArray = (x: number, y: number, z: number, id?: string) => {
     // Tilted Mounting rack
-    add(NIGHT_PALETTE.solarMount, [x, y, z], [1.12, 0.06, 0.88], id, 'box', [-0.18, 0, 0], 'metal')
+    add(CITY_PALETTE.solarMount, [x, y, z], [1.12, 0.06, 0.88], id, 'box', [-0.18, 0, 0], 'metal')
     // 4x3 individual high-efficiency solar cells
     for (let col = 0; col < 4; col++) {
       for (let row = 0; row < 3; row++) {
         const pz = -0.28 + row * 0.28
         add(
-          NIGHT_PALETTE.solarCell,
+          CITY_PALETTE.solarCell,
           [x - 0.42 + col * 0.28, y + 0.05 + pz * -0.18, z + pz],
           [0.25, 0.025, 0.25],
           id,
@@ -184,41 +185,41 @@ function buildDetailedArchitecture(scene: ScenePayload, layout: ReturnType<typeo
     const isHub = house.kind === 'evhub'
 
     // 1. Foundation Slab
-    add(NIGHT_PALETTE.raised, [x, 0.04, z], [2.15, 0.12, 2.55], id)
+    add(CITY_PALETTE.raised, [x, 0.04, z], [2.15, 0.12, 2.55], id)
 
     // EV Charging Hub Model
     if (isHub) {
-      add(NIGHT_PALETTE.road, [x, 0.11, z], [2.05, 0.04, 2.35], id, 'box', undefined, 'road')
+      add(CITY_PALETTE.road, [x, 0.11, z], [2.05, 0.04, 2.35], id, 'box', undefined, 'road')
       // Steel canopy columns
       for (const sx of [-0.75, 0.75]) {
-        add(NIGHT_PALETTE.metal, [x + sx, 0.72, z - 0.55], [0.09, 1.3, 0.09], id, 'box', undefined, 'metal')
+        add(CITY_PALETTE.metal, [x + sx, 0.72, z - 0.55], [0.09, 1.3, 0.09], id, 'box', undefined, 'metal')
       }
       // Illuminated Solar Canopy Roof
-      add(NIGHT_PALETTE.raised, [x, 1.38, z - 0.22], [1.95, 0.12, 1.65], id)
-      add(NIGHT_PALETTE.solarCell, [x, 1.45, z - 0.22], [1.85, 0.04, 1.55], id, 'box', undefined, 'solar')
+      add(CITY_PALETTE.raised, [x, 1.38, z - 0.22], [1.95, 0.12, 1.65], id)
+      add(CITY_PALETTE.solarCell, [x, 1.45, z - 0.22], [1.85, 0.04, 1.55], id, 'box', undefined, 'solar')
 
       // Fast Charging Pedestals & parking bays
       for (const sx of [-0.5, 0.5]) {
-        add(NIGHT_PALETTE.raised, [x + sx, 0.45, z - 0.75], [0.26, 0.68, 0.26], id)
-        add(NIGHT_PALETTE.importCyan, [x + sx, 0.52, z - 0.61], [0.16, 0.26, 0.04], id, 'box', undefined, 'glass')
+        add(CITY_PALETTE.raised, [x + sx, 0.45, z - 0.75], [0.26, 0.68, 0.26], id)
+        add(CITY_PALETTE.importCyan, [x + sx, 0.52, z - 0.61], [0.16, 0.26, 0.04], id, 'box', undefined, 'glass')
         // EV Bay pavement markings
-        add(NIGHT_PALETTE.stripe, [x + sx, 0.14, z + 0.3], [0.03, 0.02, 1.35], id)
+        add(CITY_PALETTE.stripe, [x + sx, 0.14, z + 0.3], [0.03, 0.02, 1.35], id)
         // Parked EV Charging Body
-        add(NIGHT_PALETTE.wall2, [x + sx, 0.32, z + 0.3], [0.38, 0.34, 0.85], id)
-        add(NIGHT_PALETTE.glass, [x + sx, 0.53, z + 0.26], [0.32, 0.18, 0.4], id, 'box', undefined, 'glass')
+        add(CITY_PALETTE.wall2, [x + sx, 0.32, z + 0.3], [0.38, 0.34, 0.85], id)
+        add(CITY_PALETTE.glass, [x + sx, 0.53, z + 0.26], [0.32, 0.18, 0.4], id, 'box', undefined, 'glass')
       }
       return
     }
 
     // Residential House Architecture
     const wallColor =
-      index % 3 === 0 ? NIGHT_PALETTE.wall1 : index % 3 === 1 ? NIGHT_PALETTE.wall2 : NIGHT_PALETTE.wall3
+      index % 3 === 0 ? CITY_PALETTE.wall1 : index % 3 === 1 ? CITY_PALETTE.wall2 : CITY_PALETTE.wall3
 
     // 2. Main Building Core Walls
     add(wallColor, [x, height / 2 + 0.12, z], [1.5, height, 1.56], id)
 
     // 3. Flat Rooftop Terrace Slab
-    add(NIGHT_PALETTE.roof, [x, height + 0.16, z], [1.65, 0.14, 1.72], id)
+    add(CITY_PALETTE.roof, [x, height + 0.16, z], [1.65, 0.14, 1.72], id)
 
     // 4. Parapet Walls around roof perimeter
     for (const sx of [-0.76, 0.76]) {
@@ -227,34 +228,34 @@ function buildDetailedArchitecture(scene: ScenePayload, layout: ReturnType<typeo
     add(wallColor, [x, height + 0.32, z - 0.76], [1.58, 0.26, 0.1], id)
 
     // 5. Ground Floor Entrance Door & Porch Awning
-    add(NIGHT_PALETTE.door, [x + 0.36, 0.44, z + 0.79], [0.32, 0.65, 0.04], id)
-    add(NIGHT_PALETTE.roof, [x + 0.36, 0.78, z + 0.95], [0.58, 0.08, 0.35], id)
+    add(CITY_PALETTE.door, [x + 0.36, 0.44, z + 0.79], [0.32, 0.65, 0.04], id)
+    add(CITY_PALETTE.roof, [x + 0.36, 0.78, z + 0.95], [0.58, 0.08, 0.35], id)
 
     // 6. Multi-Floor Window Reveals with Metal Frames and Glowing Warm Glass
     for (let floor = 0.65; floor < height; floor += 0.56) {
       // Front Windows
       for (const sx of [-0.42, 0.1]) {
         // Metallic frame
-        add(NIGHT_PALETTE.metal, [x + sx, floor, z + 0.79], [0.38, 0.36, 0.04], id, 'box', undefined, 'metal')
+        add(CITY_PALETTE.metal, [x + sx, floor, z + 0.79], [0.38, 0.36, 0.04], id, 'box', undefined, 'metal')
         // Warm glowing illuminated glass pane
-        add(NIGHT_PALETTE.glass, [x + sx, floor, z + 0.81], [0.3, 0.28, 0.03], id, 'box', undefined, 'glass')
+        add(CITY_PALETTE.glass, [x + sx, floor, z + 0.81], [0.3, 0.28, 0.03], id, 'box', undefined, 'window')
       }
 
       // Side Windows
       for (const sz of [-0.42, 0.26]) {
-        add(NIGHT_PALETTE.glass, [x + 0.76, floor, z + sz], [0.03, 0.28, 0.32], id, 'box', undefined, 'glass')
-        add(NIGHT_PALETTE.glass, [x - 0.76, floor, z + sz], [0.03, 0.28, 0.32], id, 'box', undefined, 'glass')
+        add(CITY_PALETTE.glass, [x + 0.76, floor, z + sz], [0.03, 0.28, 0.32], id, 'box', undefined, 'window')
+        add(CITY_PALETTE.glass, [x - 0.76, floor, z + sz], [0.03, 0.28, 0.32], id, 'box', undefined, 'window')
       }
 
       // 7. Projecting Cantilever Balcony for Upper Floors
       if (height > 1.5 && floor > 1.0) {
         // Balcony floor slab
-        add(NIGHT_PALETTE.raised, [x, floor - 0.24, z + 0.96], [1.45, 0.08, 0.42], id)
+        add(CITY_PALETTE.raised, [x, floor - 0.24, z + 0.96], [1.45, 0.08, 0.42], id)
         // Top handrail
-        add(NIGHT_PALETTE.metal, [x, floor - 0.06, z + 1.14], [1.45, 0.05, 0.04], id, 'box', undefined, 'metal')
+        add(CITY_PALETTE.metal, [x, floor - 0.06, z + 1.14], [1.45, 0.05, 0.04], id, 'box', undefined, 'metal')
         // Vertical railing balusters
         for (const sx of [-0.65, 0, 0.65]) {
-          add(NIGHT_PALETTE.metal, [x + sx, floor - 0.15, z + 1.14], [0.04, 0.2, 0.04], id, 'box', undefined, 'metal')
+          add(CITY_PALETTE.metal, [x + sx, floor - 0.15, z + 1.14], [0.04, 0.2, 0.04], id, 'box', undefined, 'metal')
         }
       }
     }
@@ -264,21 +265,21 @@ function buildDetailedArchitecture(scene: ScenePayload, layout: ReturnType<typeo
       solarArray(x, height + 0.42, z, id)
     } else {
       // Rooftop HVAC unit & water tank machinery
-      add(NIGHT_PALETTE.hvac, [x - 0.32, height + 0.36, z - 0.2], [0.42, 0.34, 0.46], id)
-      add(NIGHT_PALETTE.metal, [x - 0.32, height + 0.55, z - 0.2], [0.46, 0.06, 0.52], id, 'box', undefined, 'metal')
-      add(NIGHT_PALETTE.hvac, [x + 0.35, height + 0.4, z - 0.3], [0.34, 0.32, 0.34], id, 'trunk')
+      add(CITY_PALETTE.hvac, [x - 0.32, height + 0.36, z - 0.2], [0.42, 0.34, 0.46], id)
+      add(CITY_PALETTE.metal, [x - 0.32, height + 0.55, z - 0.2], [0.46, 0.06, 0.52], id, 'box', undefined, 'metal')
+      add(CITY_PALETTE.hvac, [x + 0.35, height + 0.4, z - 0.3], [0.34, 0.32, 0.34], id, 'trunk')
     }
 
     // 9. Home BESS Battery Storage Unit
     if (house.has_battery) {
-      add(NIGHT_PALETTE.batteryBody, [x + 0.94, 0.48, z + 0.36], [0.28, 0.72, 0.44], id)
+      add(CITY_PALETTE.batteryBody, [x + 0.94, 0.48, z + 0.36], [0.28, 0.72, 0.44], id)
       // LED Status Screen
-      add(NIGHT_PALETTE.importCyan, [x + 1.08, 0.52, z + 0.36], [0.03, 0.26, 0.28], id, 'box', undefined, 'glass')
+      add(CITY_PALETTE.importCyan, [x + 1.08, 0.52, z + 0.36], [0.03, 0.26, 0.28], id, 'box', undefined, 'glass')
     }
 
     // 10. Front Garden Lawn & Landscaping Hedges
-    add(NIGHT_PALETTE.lawn, [x - 0.38, 0.12, z - 1.1], [1.25, 0.07, 0.38], id, 'box', undefined, 'lawn')
-    add(index % 2 ? NIGHT_PALETTE.leafDark : NIGHT_PALETTE.leafLight, [x - 0.32, 0.28, z - 1.1], [1.15, 0.25, 0.25], id, 'box')
+    add(CITY_PALETTE.lawn, [x - 0.38, 0.12, z - 1.1], [1.25, 0.07, 0.38], id, 'box', undefined, 'lawn')
+    add(index % 2 ? CITY_PALETTE.leafDark : CITY_PALETTE.leafLight, [x - 0.32, 0.28, z - 1.1], [1.15, 0.25, 0.25], id, 'box')
   })
 
   // 11. Service Roads, Curbs, and Painted Center Stripes
@@ -289,25 +290,25 @@ function buildDetailedArchitecture(scene: ScenePayload, layout: ReturnType<typeo
     const left = Math.min(...xs) - 1.2, right = Math.max(...xs) + 1.2
 
     for (const z of [...new Set(zs)]) {
-      add(NIGHT_PALETTE.road, [(left + right) / 2, -0.02, z + 1.5], [right - left, 0.07, 0.48], undefined, 'box', undefined, 'road')
+      add(CITY_PALETTE.road, [(left + right) / 2, -0.02, z + 1.5], [right - left, 0.07, 0.48], undefined, 'box', undefined, 'road')
     }
     const tz = layout.transformers[transformer.id][2]
-    add(NIGHT_PALETTE.lawn, [(left + right) / 2, -0.01, tz], [right - left, 0.08, 2.9], undefined, 'box', undefined, 'lawn')
+    add(CITY_PALETTE.lawn, [(left + right) / 2, -0.01, tz], [right - left, 0.08, 2.9], undefined, 'box', undefined, 'lawn')
     for (const x of [left + 0.6, right - 0.6]) {
       tree(x, tz, 0.95)
     }
   })
 
   // Main Crossroad Intersections with Center Stripes
-  add(NIGHT_PALETTE.road, [0, -0.04, 0], [2.3, 0.1, layout.depth], undefined, 'box', undefined, 'road')
-  add(NIGHT_PALETTE.road, [0, -0.035, 0.08], [layout.width, 0.1, 1.8], undefined, 'box', undefined, 'road')
+  add(CITY_PALETTE.road, [0, -0.04, 0], [2.3, 0.1, layout.depth], undefined, 'box', undefined, 'road')
+  add(CITY_PALETTE.road, [0, -0.035, 0.08], [layout.width, 0.1, 1.8], undefined, 'box', undefined, 'road')
 
   // Painted dashed road markings
   for (let z = -layout.depth / 2 + 1.5; z < layout.depth / 2; z += 1.5) {
-    add(NIGHT_PALETTE.stripe, [0, 0.02, z], [0.05, 0.012, 0.7])
+    add(CITY_PALETTE.stripe, [0, 0.02, z], [0.05, 0.012, 0.7])
   }
   for (let x = -layout.width / 2 + 1.5; x < layout.width / 2; x += 1.5) {
-    add(NIGHT_PALETTE.stripe, [x, 0.02, 0.08], [0.7, 0.012, 0.05])
+    add(CITY_PALETTE.stripe, [x, 0.02, 0.08], [0.7, 0.012, 0.05])
   }
 
   // Periphery Trees
@@ -323,8 +324,10 @@ function buildDetailedArchitecture(scene: ScenePayload, layout: ReturnType<typeo
 function ArchitectureBatch({
   batch,
   onSelect,
+  night,
 }: {
   batch: Batch
+  night: number
   onSelect: CityProps['onSelect']
 }) {
   const mesh = useRef<THREE.InstancedMesh>(null)
@@ -343,8 +346,11 @@ function ArchitectureBatch({
     mesh.current.computeBoundingSphere()
   }, [batch])
 
-  // Custom materials tailored for night illumination
+  // Windows follow the sun; PV is reflective rather than self-illuminated.
   const material = useMemo(() => {
+    if (batch.materialType === 'window') {
+      return new THREE.MeshStandardMaterial({ color: '#7e9baf', emissive: '#ffbf72', emissiveIntensity: 0, roughness: .28, metalness: .15 })
+    }
     if (batch.materialType === 'glass') {
       // Warm glowing night windows
       return new THREE.MeshStandardMaterial({
@@ -355,11 +361,10 @@ function ArchitectureBatch({
       })
     }
     if (batch.materialType === 'solar') {
-      // Reflective blue glowing rooftop solar
+      // Reflective PV cells do not emit their own light.
       return new THREE.MeshStandardMaterial({
-        color: '#0284c7',
-        emissive: '#0369a1',
-        emissiveIntensity: 0.85,
+        color: '#244b69',
+        emissiveIntensity: 0,
         metalness: 0.85,
         roughness: 0.18,
       })
@@ -388,6 +393,14 @@ function ArchitectureBatch({
       roughness: 0.75,
     })
   }, [batch])
+
+  useEffect(() => () => material.dispose(), [material])
+  const windowTint = useMemo(() => new THREE.Color('#7e9baf').lerp(new THREE.Color('#ffe2aa'), night), [night])
+  useFrame((_, dt) => {
+    if (batch.materialType !== 'window') return
+    material.emissiveIntensity = THREE.MathUtils.damp(material.emissiveIntensity, night * 1.65, 2.5, Math.min(dt, .1))
+    material.color.lerp(windowTint, 1 - Math.exp(-Math.min(dt, .1) * 2.5))
+  })
 
   return (
     <instancedMesh
@@ -442,11 +455,11 @@ function EnergyPads({
       mesh.current!.setMatrixAt(index, dummy.matrix)
 
       const hex = state?.curtailed
-        ? NIGHT_PALETTE.stressRed
+        ? CITY_PALETTE.stressRed
         : state?.state === 'export'
-        ? NIGHT_PALETTE.exportGold
+        ? CITY_PALETTE.exportGold
         : state?.state === 'import'
-        ? NIGHT_PALETTE.importCyan
+        ? CITY_PALETTE.importCyan
         : '#334155'
       mesh.current!.setColorAt(index, color.set(hex))
     })
@@ -458,7 +471,7 @@ function EnergyPads({
       dummy.scale.set(0.03, level * 0.52, 0.26)
       dummy.updateMatrix()
       mesh.current!.setMatrixAt(scene.houses.length + index, dummy.matrix)
-      mesh.current!.setColorAt(scene.houses.length + index, color.set(NIGHT_PALETTE.importCyan))
+      mesh.current!.setColorAt(scene.houses.length + index, color.set(CITY_PALETTE.importCyan))
     })
 
     mesh.current.instanceMatrix.needsUpdate = true
@@ -740,7 +753,13 @@ function PowerFlowLayer({ connections }: { connections: PowerConnection[] }) {
 }
 
 // Streetlight fixtures
-function StreetLight({ position }: { position: Point }) {
+function StreetLight({ position, night }: { position: Point; night: number }) {
+  const light = useRef<THREE.PointLight>(null)
+  const lamp = useRef<THREE.MeshStandardMaterial>(null)
+  useFrame((_, dt) => {
+    if (light.current) light.current.intensity = THREE.MathUtils.damp(light.current.intensity, night * 9, 2.5, Math.min(dt, .1))
+    if (lamp.current) lamp.current.emissiveIntensity = THREE.MathUtils.damp(lamp.current.emissiveIntensity, night * 2, 2.5, Math.min(dt, .1))
+  })
   const [x, y, z] = position
   return (
     <group position={[x, y, z]}>
@@ -758,9 +777,9 @@ function StreetLight({ position }: { position: Point }) {
       </mesh>
       <mesh position={[0.42, 2.45, 0]}>
         <boxGeometry args={[0.2, 0.03, 0.1]} />
-        <meshBasicMaterial color="#ffeedd" />
+        <meshStandardMaterial ref={lamp} color="#d7d4bc" emissive="#ffcc88" emissiveIntensity={0} />
       </mesh>
-      <pointLight position={[0.42, 2.25, 0]} color="#ffcc66" intensity={1.3} distance={7} decay={2} />
+      <pointLight ref={light} position={[0.42, 2.25, 0]} color="#ffcc88" intensity={0} distance={7} decay={2} />
     </group>
   )
 }
@@ -852,7 +871,9 @@ function CityScene({
   onSelect,
   cameraMode,
   custodyHighlight,
+  lightingMode = 'simulation',
 }: CityProps & { cameraMode: CameraMode }) {
+  const lighting = useMemo(() => lightingAt(block?.clock, lightingMode), [block?.clock, lightingMode])
   const layout = useMemo(() => cityLayout(scene), [scene])
   const batches = useMemo(() => buildDetailedArchitecture(scene, layout), [scene, layout])
   const selectedPoint = selected ? layout.houses[selected] : null
@@ -887,7 +908,7 @@ function CityScene({
         : memberBalance < -0.05
         ? -1
         : 0
-      const color = direction === -1 ? NIGHT_PALETTE.exportGold : NIGHT_PALETTE.importCyan
+      const color = direction === -1 ? CITY_PALETTE.exportGold : CITY_PALETTE.importCyan
       const source: Point = [layout.discom[0] + 1.0, 4.4, layout.discom[2]]
       const target: Point = [transformerPosition[0], 1.95, transformerPosition[2]]
 
@@ -925,11 +946,11 @@ function CityScene({
         ? 1
         : -1
       const connectionColor = state?.curtailed
-        ? NIGHT_PALETTE.stressRed
+        ? CITY_PALETTE.stressRed
         : direction === -1
-        ? NIGHT_PALETTE.exportGold
+        ? CITY_PALETTE.exportGold
         : direction === 1
-        ? NIGHT_PALETTE.importCyan
+        ? CITY_PALETTE.importCyan
         : '#64748b'
       const source: Point = [transformerPosition[0], 1.25, transformerPosition[2]]
       // End at the visible meter/energy pad in front of the premises, rather
@@ -977,40 +998,13 @@ function CityScene({
         extent={Math.max(layout.width, layout.depth)}
       />
 
-      {/* Luminous Twilight Atmosphere */}
-      <color attach="background" args={[NIGHT_PALETTE.background]} />
-      <fog attach="fog" args={[NIGHT_PALETTE.background, 55, 145]} />
-
-      {/* Sky/Ground Hemisphere illumination ensures buildings and ground are clearly visible */}
-      <hemisphereLight args={['#8ea9d4', '#263b32', 2.2]} />
-      <ambientLight color="#4b6282" intensity={1.2} />
-
-      {/* Crisp Directional Moonlight */}
-      <directionalLight
-        position={[-22, 40, -18]}
-        intensity={2.8}
-        color="#e2efff"
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-35}
-        shadow-camera-right={35}
-        shadow-camera-top={35}
-        shadow-camera-bottom={-35}
-        shadow-bias={-0.0004}
-      />
-      {/* Warm Golden Urban Glow & Rim Light */}
-      <directionalLight position={[28, 24, 28]} intensity={1.3} color="#fed7aa" />
-
-      {/* Ground plane (Surrounding dark terrain) */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.06, 0]} receiveShadow>
-        <planeGeometry args={[160, 160]} />
-        <meshStandardMaterial color={NIGHT_PALETTE.ground} roughness={0.9} />
-      </mesh>
+      <CityEnvironment lighting={lighting} extent={Math.max(layout.width, layout.depth)} />
+      <CitySurroundings width={layout.width} depth={layout.depth} night={lighting.night} />
 
       {/* Neighborhood base plate (Clean elevated urban podium) */}
       <mesh position={[0, -0.15, 0]} receiveShadow>
         <boxGeometry args={[layout.width + 4, 0.25, layout.depth + 4]} />
-        <meshStandardMaterial color={NIGHT_PALETTE.baseplate} roughness={0.8} />
+        <meshStandardMaterial color={CITY_PALETTE.baseplate} roughness={0.8} />
       </mesh>
 
       {/* DISCOM / High-Voltage Substation */}
@@ -1022,7 +1016,7 @@ function CityScene({
 
       {/* Detailed Batched Architecture (Balconies, Windows, Parapets, Rooftop Arrays, EV Hubs, Roads) */}
       {batches.map((batch) => (
-        <ArchitectureBatch key={batch.key} batch={batch} onSelect={onSelect} />
+        <ArchitectureBatch key={batch.key} batch={batch} onSelect={onSelect} night={lighting.night} />
       ))}
 
       {/* Active Energy Pads on the ground for houses & batteries */}
@@ -1044,7 +1038,7 @@ function CityScene({
 
       {/* Streetlights */}
       {streetlights.map((pos, i) => (
-        <StreetLight key={i} position={pos} />
+        <StreetLight key={i} position={pos} night={lighting.night} />
       ))}
 
       {/* Selection indicator & label */}
@@ -1166,7 +1160,8 @@ export function City3D(props: CityProps) {
       <Canvas
         className="city-canvas"
         shadows
-        camera={{ position: [24, 24, 26], fov: 42, near: 0.1, far: 300 }}
+        dpr={[1, 1.75]}
+        camera={{ position: [24, 24, 26], fov: 42, near: 0.1, far: 1000 }}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
         onPointerMissed={() => props.onSelect(null)}
       >

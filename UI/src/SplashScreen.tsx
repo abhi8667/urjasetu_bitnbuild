@@ -14,7 +14,7 @@ export function SplashScreen({ onStartTour, onBackToBlackout, onSkipToFreeView }
       <div className="splash-container">
         {/* Top Badges */}
         <div className="splash-badge-row">
-          <span className="splash-tag-pill">⚡ Bit n Build 2026</span>
+          <span className="splash-tag-pill">Bit n Build 2026</span>
           <span className="splash-hackathon-pill">Autonomous Microgrid System</span>
         </div>
 
